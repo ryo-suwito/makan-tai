@@ -555,6 +555,74 @@ ul {
   gap: 0.75rem;
 }
 
+.cockpit-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.cockpit-card {
+  padding: 1rem 1.1rem;
+  border: 1px solid rgba(22, 32, 51, 0.1);
+  border-radius: 1rem;
+  background:
+    radial-gradient(circle at top right, rgba(17, 24, 39, 0.06), transparent 40%),
+    rgba(255, 255, 255, 0.92);
+}
+
+.cockpit-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.cockpit-copy {
+  margin: 0.4rem 0 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.cockpit-status-pill {
+  min-width: 7rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-align: center;
+  color: #7a5a00;
+  background: rgba(226, 180, 54, 0.16);
+}
+
+.cockpit-status-pill-connected {
+  color: #109868;
+  background: rgba(16, 152, 104, 0.12);
+}
+
+.cockpit-meta-grid {
+  margin-top: 1rem;
+  display: grid;
+  gap: 0.8rem;
+}
+
+.cockpit-meta-item {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.cockpit-meta-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.cockpit-meta-value {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: var(--text);
+  word-break: break-word;
+}
+
 .gemini-action-row,
 .gemini-copy-row,
 .system-prompt-actions {
@@ -567,6 +635,7 @@ ul {
 .gemini-save-button,
 .gemini-generate-button,
 .gemini-copy-button,
+.threads-publish-button,
 .gemini-secondary-button,
 .system-prompt-delete {
   padding: 0.8rem 1.1rem;
@@ -575,7 +644,8 @@ ul {
 
 .gemini-save-button,
 .gemini-generate-button,
-.gemini-copy-button {
+.gemini-copy-button,
+.threads-publish-button {
   color: #ffffff;
 }
 
@@ -594,6 +664,11 @@ ul {
   box-shadow: 0 14px 28px rgba(16, 152, 104, 0.2);
 }
 
+.threads-publish-button {
+  background: linear-gradient(135deg, #111827 0%, #2a3447 100%);
+  box-shadow: 0 14px 28px rgba(17, 24, 39, 0.22);
+}
+
 .gemini-secondary-button,
 .system-prompt-delete {
   border: 1px solid var(--border);
@@ -606,7 +681,8 @@ ul {
 }
 
 .system-prompt-library,
-.gemini-result-card {
+.gemini-result-card,
+.style-dna-profile-card {
   margin-top: 0.6rem;
   padding: 1rem;
   border: 1px solid rgba(22, 32, 51, 0.1);
@@ -616,6 +692,69 @@ ul {
 
 .openrouter-model-select {
   margin-bottom: 0.75rem;
+}
+
+.openrouter-favorites-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.openrouter-favorites-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.openrouter-favorite-chip {
+  display: inline-flex;
+  align-items: stretch;
+  max-width: 100%;
+  border: 1px solid rgba(22, 32, 51, 0.1);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.92);
+  overflow: hidden;
+}
+
+.openrouter-favorite-chip-active {
+  border-color: rgba(47, 109, 246, 0.35);
+  box-shadow: 0 12px 24px rgba(47, 109, 246, 0.12);
+}
+
+.openrouter-favorite-pick {
+  display: grid;
+  gap: 0.08rem;
+  padding: 0.65rem 0.8rem;
+  text-align: left;
+  background: transparent;
+  box-shadow: none;
+}
+
+.openrouter-favorite-pick:hover,
+.openrouter-favorite-remove:hover {
+  transform: none;
+  filter: none;
+}
+
+.openrouter-favorite-pick span:first-child {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.openrouter-favorite-slug {
+  font-size: 0.76rem;
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.openrouter-favorite-remove {
+  padding: 0 0.85rem;
+  border-left: 1px solid rgba(22, 32, 51, 0.08);
+  color: var(--red);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: none;
 }
 
 .openrouter-select__control {
@@ -762,6 +901,11 @@ ul {
     rgba(255, 255, 255, 0.96);
 }
 
+.system-prompt-card-selected {
+  border-color: rgba(47, 109, 246, 0.32);
+  box-shadow: 0 12px 24px rgba(47, 109, 246, 0.12);
+}
+
 .system-prompt-preview,
 .gemini-selected-system-prompt {
   margin: 0.7rem 0 0;
@@ -769,8 +913,318 @@ ul {
   line-height: 1.6;
 }
 
+.reference-image-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.65rem;
+}
+
+.reference-image-input {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.reference-file-meta,
+.reference-selection-summary,
+.reference-empty-copy {
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.reference-file-meta {
+  margin: -0.45rem 0 1rem;
+  font-size: 0.84rem;
+}
+
+.reference-selection-summary {
+  margin: 0.45rem 0 0;
+  font-size: 0.84rem;
+}
+
+.reference-empty-copy {
+  margin: 0 0 1rem;
+}
+
+.reference-selected-list {
+  margin-top: 0.85rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  gap: 0.8rem;
+}
+
+.reference-selected-card {
+  padding: 0.55rem;
+  border: 1px solid rgba(22, 32, 51, 0.08);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.reference-selected-image,
+.reference-gallery-image {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  border-radius: 0.8rem;
+  background: rgba(12, 24, 49, 0.06);
+}
+
+.reference-selected-meta,
+.reference-gallery-header,
+.reference-gallery-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.reference-selected-meta {
+  margin-top: 0.6rem;
+}
+
+.reference-source-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #2458c9;
+  background: rgba(47, 109, 246, 0.1);
+}
+
+.reference-selected-remove {
+  padding: 0;
+  color: #c74b3d;
+  background: transparent;
+  box-shadow: none;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.reference-gallery-scroll {
+  max-height: 26rem;
+  margin-top: 0.85rem;
+  overflow-y: auto;
+  padding-right: 0.2rem;
+}
+
+.reference-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: 0.8rem;
+}
+
+.reference-gallery-item {
+  display: block;
+  width: 100%;
+  padding: 0.45rem;
+  border: 1px solid rgba(22, 32, 51, 0.08);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.96);
+  text-align: left;
+  box-shadow: none;
+}
+
+.reference-gallery-item-selected {
+  border-color: rgba(47, 109, 246, 0.35);
+  box-shadow: 0 12px 24px rgba(47, 109, 246, 0.12);
+}
+
+.reference-gallery-meta {
+  margin-top: 0.55rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.reference-gallery-check {
+  font-weight: 700;
+  color: #2458c9;
+}
+
+.reference-gallery-item-selected .reference-gallery-check {
+  color: #1a8a55;
+}
+
+.reference-gallery-sentinel {
+  height: 1px;
+}
+
+.reference-load-more {
+  width: 100%;
+  margin-top: 0.85rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px dashed rgba(47, 109, 246, 0.28);
+  border-radius: 1rem;
+  color: #2458c9;
+  background: rgba(47, 109, 246, 0.06);
+  box-shadow: none;
+  font-weight: 700;
+}
+
+.reference-gallery-item:hover,
+.reference-selected-remove:hover,
+.reference-load-more:hover {
+  transform: none;
+  filter: none;
+}
+
 .gemini-result-card {
   min-height: 14rem;
+}
+
+.gemini-output-meta-row {
+  margin-top: 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.gemini-char-pill {
+  padding: 0.3rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #2458c9;
+  background: rgba(47, 109, 246, 0.1);
+}
+
+.gemini-char-pill-warning {
+  color: #b34b17;
+  background: rgba(255, 140, 73, 0.16);
+}
+
+.gemini-output-textarea {
+  width: 100%;
+  min-height: 16rem;
+  margin-top: 0.9rem;
+  padding: 0.95rem 1rem;
+  border: 1px solid rgba(22, 32, 51, 0.14);
+  border-radius: 1rem;
+  resize: vertical;
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--text);
+  line-height: 1.7;
+}
+
+.gemini-output-textarea:focus {
+  outline: none;
+  border-color: rgba(95, 62, 232, 0.48);
+  box-shadow: 0 0 0 3px rgba(95, 62, 232, 0.12);
+}
+
+.style-dna-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.style-dna-char-count {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.style-dna-profile-body {
+  margin-top: 0.9rem;
+  display: grid;
+  gap: 0.95rem;
+}
+
+.style-dna-dimension {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.style-dna-dimension-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.92rem;
+}
+
+.style-dna-dimension-header span,
+.style-dna-scale span {
+  color: var(--muted);
+}
+
+.style-dna-scale {
+  display: grid;
+  grid-template-columns: minmax(4.5rem, auto) 1fr minmax(4.5rem, auto);
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
+.style-dna-scale span:last-child {
+  text-align: right;
+}
+
+.style-dna-track {
+  position: relative;
+  height: 0.3rem;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(36, 88, 201, 0.18), rgba(95, 62, 232, 0.24));
+}
+
+.style-dna-tick {
+  position: absolute;
+  top: 50%;
+  width: 0.85rem;
+  height: 0.85rem;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #2458c9 0%, #5f3ee8 100%);
+  box-shadow: 0 8px 18px rgba(36, 88, 201, 0.22);
+  transform: translate(-50%, -50%);
+}
+
+.style-dna-note {
+  margin: 0;
+  padding-left: 0.1rem;
+  font-size: 0.84rem;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.style-dna-pattern-block {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.style-dna-pattern-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.style-dna-pattern-list-compact {
+  margin-top: 0.8rem;
+}
+
+.style-dna-tag {
+  padding: 0.35rem 0.7rem;
+  border: 1px solid rgba(22, 32, 51, 0.08);
+  border-radius: 999px;
+  font-size: 0.78rem;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.style-dna-summary {
+  margin: 0;
+  padding: 0.95rem 1rem;
+  border-radius: 0.95rem;
+  line-height: 1.65;
+  color: var(--text);
+  background:
+    radial-gradient(circle at top left, rgba(16, 152, 104, 0.1), transparent 44%),
+    rgba(247, 250, 255, 0.92);
 }
 
 .gemini-output-text {
@@ -896,6 +1350,8 @@ ul {
 @media (max-width: 767px) {
   .voice-action-row,
   .voice-meta-row,
+  .cockpit-card-header,
+  .style-dna-meta-row,
   .audio-library-header,
   .audio-clip-meta,
   .gemini-action-row,
@@ -913,6 +1369,7 @@ ul {
   .gemini-save-button,
   .gemini-generate-button,
   .gemini-copy-button,
+  .threads-publish-button,
   .gemini-secondary-button,
   .system-prompt-delete {
     width: 100%;

@@ -1,60 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSystemPromptById } from '../../../../lib/db';
+import { getStyleDnaProfileById, getSystemPromptById } from '../../../../lib/db';
+import { buildStyleDnaInstruction } from '../../../../lib/style-dna';
+import { generateText } from '../../../../lib/text-generation';
 
 export const runtime = 'nodejs';
 
 interface OpenRouterGenerateBody {
   input: string;
   model?: string | null;
+  styleDnaId?: number | null;
   systemPromptId?: number | null;
-}
-
-interface OpenRouterChatResponse {
-  choices?: Array<{
-    message?: {
-      content?: string | Array<{ text?: string; type?: string }>;
-      role?: string;
-    };
-  }>;
-  error?: {
-    message?: string;
-  };
-  model?: string;
-}
-
-function getOpenRouterHeaders(req: NextRequest) {
-  const referer =
-    process.env.OPENROUTER_SITE_URL ||
-    (() => {
-      const host = req.headers.get('host');
-      const proto = req.headers.get('x-forwarded-proto') || 'http';
-      return host ? `${proto}://${host}` : 'http://localhost:3000';
-    })();
-
-  const title = process.env.OPENROUTER_APP_NAME || 'AI Image + Voice Studio';
-
-  return {
-    Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-    'Content-Type': 'application/json',
-    'HTTP-Referer': referer,
-    'X-OpenRouter-Title': title,
-  };
-}
-
-function extractMessageText(content: OpenRouterChatResponse['choices'][number]['message']['content']) {
-  if (typeof content === 'string') {
-    return content.trim();
-  }
-
-  if (Array.isArray(content)) {
-    return content
-      .map((item) => item?.text?.trim())
-      .filter((value): value is string => Boolean(value))
-      .join('\n')
-      .trim();
-  }
-
-  return '';
 }
 
 export async function POST(req: NextRequest) {
@@ -68,6 +23,7 @@ export async function POST(req: NextRequest) {
     const input = typeof body.input === 'string' ? body.input.trim() : '';
     const requestedModel = typeof body.model === 'string' && body.model.trim() ? body.model.trim() : 'openrouter/free';
     const systemPromptId = body.systemPromptId ?? null;
+    const styleDnaId = body.styleDnaId ?? null;
 
     if (!input) {
       return NextResponse.json({ error: 'Missing input' }, { status: 400 });
@@ -81,39 +37,33 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: getOpenRouterHeaders(req),
-      body: JSON.stringify({
-        model: requestedModel,
-        temperature: 0.7,
-        messages: [
-          ...(systemPrompt
-            ? [{ role: 'system', content: systemPrompt.text }]
-            : []),
-          { role: 'user', content: input },
-        ],
-      }),
-    });
-
-    const data = (await response.json().catch(() => ({}))) as OpenRouterChatResponse;
-    if (!response.ok) {
-      const errorMessage = data?.error?.message || 'OpenRouter request failed.';
-      return NextResponse.json({ error: errorMessage }, { status: response.status });
+    const styleDna = typeof styleDnaId === 'number'
+      ? getStyleDnaProfileById(styleDnaId)
+      : null;
+    if (typeof styleDnaId === 'number' && !styleDna) {
+      return NextResponse.json({ error: 'Selected Style DNA was not found' }, { status: 404 });
     }
 
-    const text = extractMessageText(data.choices?.[0]?.message?.content);
-    if (!text) {
+    const systemInstruction = [systemPrompt?.text, styleDna ? buildStyleDnaInstruction(styleDna.profile) : null]
+      .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+      .join('\n\n');
+
+    const result = await generateText({
+      provider: 'openrouter',
+      input,
+      openRouterModel: requestedModel,
+      systemInstruction: systemInstruction || null,
+    });
+
+    if (!result.text.trim()) {
       return NextResponse.json({ error: 'OpenRouter returned an empty response.' }, { status: 502 });
     }
 
     return NextResponse.json({
       data: {
-        text,
-        model: requestedModel,
-        provider: 'openrouter',
-        resolvedModel: data.model || null,
+        ...result,
         systemPromptName: systemPrompt?.name ?? null,
+        styleDnaName: styleDna?.name ?? null,
       },
     });
   } catch (err: unknown) {

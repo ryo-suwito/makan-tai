@@ -25,6 +25,11 @@ interface GeminiInlineDataPart {
   };
 }
 
+interface OpenAiImageReference {
+  file_id?: string;
+  image_url?: string;
+}
+
 function buildAbsoluteGeneratedUrl(req: NextRequest, filename: string) {
   const host = req.headers.get('host');
   const proto = req.headers.get('x-forwarded-proto') || 'http';
@@ -37,6 +42,14 @@ function extensionFromMimeType(mimeType: string) {
   if (normalized.includes('jpeg') || normalized.includes('jpg')) return '.jpg';
   if (normalized.includes('webp')) return '.webp';
   if (normalized.includes('gif')) return '.gif';
+  return '.png';
+}
+
+function extensionFromImageFormat(format: string | null | undefined) {
+  const normalized = format?.toLowerCase();
+  if (normalized === 'jpeg' || normalized === 'jpg') return '.jpg';
+  if (normalized === 'webp') return '.webp';
+  if (normalized === 'gif') return '.gif';
   return '.png';
 }
 
@@ -56,17 +69,12 @@ async function persistGeneratedImage(req: NextRequest, buffer: Buffer, filename:
   return buildAbsoluteGeneratedUrl(req, filename);
 }
 
-async function fetchImageSourceAsInlineData(source: string): Promise<GeminiInlineDataPart> {
+async function fetchImageSourceAsDataUrl(source: string): Promise<string> {
   const trimmedSource = source.trim();
   const dataUrlMatch = trimmedSource.match(/^data:(.+?);base64,(.+)$/);
 
   if (dataUrlMatch) {
-    return {
-      inlineData: {
-        mimeType: dataUrlMatch[1],
-        data: dataUrlMatch[2],
-      },
-    };
+    return trimmedSource;
   }
 
   const localPath = (() => {
@@ -88,12 +96,7 @@ async function fetchImageSourceAsInlineData(source: string): Promise<GeminiInlin
 
   if (localPath) {
     const buffer = await readFile(localPath);
-    return {
-      inlineData: {
-        mimeType: mimeTypeFromExtension(localPath),
-        data: buffer.toString('base64'),
-      },
-    };
+    return `data:${mimeTypeFromExtension(localPath)};base64,${buffer.toString('base64')}`;
   }
 
   const response = await fetch(trimmedSource);
@@ -101,12 +104,25 @@ async function fetchImageSourceAsInlineData(source: string): Promise<GeminiInlin
     throw new Error(`Failed to fetch reference image: ${response.status} ${response.statusText}`);
   }
 
-  return {
-    inlineData: {
-      mimeType: response.headers.get('content-type') || 'image/png',
-      data: Buffer.from(await response.arrayBuffer()).toString('base64'),
-    },
-  };
+  const mimeType = response.headers.get('content-type') || 'image/png';
+  const buffer = Buffer.from(await response.arrayBuffer());
+  return `data:${mimeType};base64,${buffer.toString('base64')}`;
+}
+
+async function fetchImageSourceAsInlineData(source: string): Promise<GeminiInlineDataPart> {
+  const dataUrl = await fetchImageSourceAsDataUrl(source);
+  const dataUrlMatch = dataUrl.match(/^data:(.+?);base64,(.+)$/);
+
+  if (dataUrlMatch) {
+    return {
+      inlineData: {
+        mimeType: dataUrlMatch[1],
+        data: dataUrlMatch[2],
+      },
+    };
+  }
+
+  throw new Error('Failed to convert reference image to inline data.');
 }
 
 export async function POST(req: NextRequest) {
@@ -127,7 +143,7 @@ export async function POST(req: NextRequest) {
       }
 
       const payload: {
-        input_images?: string[];
+        images?: OpenAiImageReference[];
         model: string;
         n: number;
         prompt: string;
@@ -141,11 +157,16 @@ export async function POST(req: NextRequest) {
         size: `${width}x${height}`,
       };
 
+      const endpoint = inputImages.length > 0 ? '/images/edits' : '/images/generations';
       if (inputImages.length > 0) {
-        payload.input_images = inputImages;
+        payload.images = await Promise.all(
+          inputImages.map(async (source) => ({
+            image_url: await fetchImageSourceAsDataUrl(source),
+          })),
+        );
       }
 
-      const response = await axios.post(`${base}/images/generations`, payload, {
+      const response = await axios.post(`${base}${endpoint}`, payload, {
         headers: {
           Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
@@ -155,21 +176,30 @@ export async function POST(req: NextRequest) {
       const result = response.data;
       if (Array.isArray(result?.data)) {
         await Promise.all(
-          result.data.map(async (item: { url?: string }, index: number) => {
+          result.data.map(async (item: { b64_json?: string; url?: string }, index: number) => {
             try {
-              if (!item?.url) {
+              let buffer: Buffer | null = null;
+              let extension = extensionFromImageFormat(result?.output_format);
+
+              if (item?.url) {
+                const resImg = await fetch(item.url);
+                if (!resImg.ok) {
+                  throw new Error(`Failed to fetch image: ${resImg.statusText}`);
+                }
+
+                buffer = Buffer.from(await resImg.arrayBuffer());
+                extension = extname(new URL(item.url).pathname) || extension;
+              } else if (item?.b64_json) {
+                buffer = Buffer.from(item.b64_json, 'base64');
+              }
+
+              if (!buffer) {
                 return;
               }
 
-              const resImg = await fetch(item.url);
-              if (!resImg.ok) {
-                throw new Error(`Failed to fetch image: ${resImg.statusText}`);
-              }
-
-              const buffer = Buffer.from(await resImg.arrayBuffer());
-              const extension = extname(new URL(item.url).pathname) || '.png';
               const filename = `img_${Date.now()}_${index}${extension}`;
               item.url = await persistGeneratedImage(req, buffer, filename);
+              delete item.b64_json;
             } catch (err) {
               console.error('Failed to persist generated image', err);
             }
@@ -354,7 +384,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unsupported model' }, { status: 400 });
   } catch (err: unknown) {
     console.error(err);
-    const details = err instanceof Error ? err.message : 'Unknown error';
+    const details = axios.isAxiosError(err)
+      ? err.response?.data?.error?.message
+        ?? err.response?.data?.error
+        ?? err.response?.data?.message
+        ?? err.message
+      : err instanceof Error
+        ? err.message
+        : 'Unknown error';
     return NextResponse.json({ error: 'Failed to generate image', details }, { status: 500 });
   }
 }
