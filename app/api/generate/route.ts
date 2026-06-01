@@ -1,0 +1,360 @@
+import { Buffer } from 'buffer';
+import { GoogleGenAI } from '@google/genai';
+import { mkdir, readFile, writeFile } from 'fs/promises';
+import { extname, join } from 'path';
+import { NextRequest, NextResponse } from 'next/server';
+import axios from 'axios';
+import { getClosestGeminiAspectRatio, isGeminiImageModel, isOpenAiImageModel } from '../../../lib/image-models';
+
+export const runtime = 'nodejs';
+
+interface GenerateBody {
+  prompt: string;
+  width: number;
+  height: number;
+  batchSize: number;
+  model: string;
+  quality: string;
+  inputImages?: string[];
+}
+
+interface GeminiInlineDataPart {
+  inlineData: {
+    data: string;
+    mimeType: string;
+  };
+}
+
+function buildAbsoluteGeneratedUrl(req: NextRequest, filename: string) {
+  const host = req.headers.get('host');
+  const proto = req.headers.get('x-forwarded-proto') || 'http';
+  return host ? `${proto}://${host}/generated/${filename}` : `/generated/${filename}`;
+}
+
+function extensionFromMimeType(mimeType: string) {
+  const normalized = mimeType.toLowerCase();
+  if (normalized.includes('png')) return '.png';
+  if (normalized.includes('jpeg') || normalized.includes('jpg')) return '.jpg';
+  if (normalized.includes('webp')) return '.webp';
+  if (normalized.includes('gif')) return '.gif';
+  return '.png';
+}
+
+function mimeTypeFromExtension(filePath: string) {
+  const extension = extname(filePath).toLowerCase();
+  if (extension === '.png') return 'image/png';
+  if (extension === '.jpg' || extension === '.jpeg') return 'image/jpeg';
+  if (extension === '.webp') return 'image/webp';
+  if (extension === '.gif') return 'image/gif';
+  return 'image/png';
+}
+
+async function persistGeneratedImage(req: NextRequest, buffer: Buffer, filename: string) {
+  const generatedDir = join(process.cwd(), 'public', 'generated');
+  await mkdir(generatedDir, { recursive: true });
+  await writeFile(join(generatedDir, filename), buffer);
+  return buildAbsoluteGeneratedUrl(req, filename);
+}
+
+async function fetchImageSourceAsInlineData(source: string): Promise<GeminiInlineDataPart> {
+  const trimmedSource = source.trim();
+  const dataUrlMatch = trimmedSource.match(/^data:(.+?);base64,(.+)$/);
+
+  if (dataUrlMatch) {
+    return {
+      inlineData: {
+        mimeType: dataUrlMatch[1],
+        data: dataUrlMatch[2],
+      },
+    };
+  }
+
+  const localPath = (() => {
+    if (trimmedSource.startsWith('/uploads/') || trimmedSource.startsWith('/generated/')) {
+      return join(process.cwd(), 'public', trimmedSource.replace(/^\//, ''));
+    }
+
+    try {
+      const parsed = new URL(trimmedSource);
+      if (parsed.pathname.startsWith('/uploads/') || parsed.pathname.startsWith('/generated/')) {
+        return join(process.cwd(), 'public', parsed.pathname.replace(/^\//, ''));
+      }
+    } catch {
+      // Fall back to network fetch below.
+    }
+
+    return null;
+  })();
+
+  if (localPath) {
+    const buffer = await readFile(localPath);
+    return {
+      inlineData: {
+        mimeType: mimeTypeFromExtension(localPath),
+        data: buffer.toString('base64'),
+      },
+    };
+  }
+
+  const response = await fetch(trimmedSource);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch reference image: ${response.status} ${response.statusText}`);
+  }
+
+  return {
+    inlineData: {
+      mimeType: response.headers.get('content-type') || 'image/png',
+      data: Buffer.from(await response.arrayBuffer()).toString('base64'),
+    },
+  };
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = (await req.json()) as GenerateBody;
+    const { prompt, width, height, batchSize, model, quality, inputImages = [] } = body;
+
+    if (!prompt || !model) {
+      return NextResponse.json({ error: 'Missing prompt or model' }, { status: 400 });
+    }
+
+    if (isOpenAiImageModel(model)) {
+      const apiKey = process.env.OPENAI_API_KEY;
+      const base = process.env.OPENAI_API_BASE || 'https://api.openai.com/v1';
+
+      if (!apiKey) {
+        return NextResponse.json({ error: 'Missing OPENAI_API_KEY' }, { status: 500 });
+      }
+
+      const payload: {
+        input_images?: string[];
+        model: string;
+        n: number;
+        prompt: string;
+        quality: string;
+        size: string;
+      } = {
+        model,
+        prompt,
+        n: batchSize || 1,
+        quality,
+        size: `${width}x${height}`,
+      };
+
+      if (inputImages.length > 0) {
+        payload.input_images = inputImages;
+      }
+
+      const response = await axios.post(`${base}/images/generations`, payload, {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const result = response.data;
+      if (Array.isArray(result?.data)) {
+        await Promise.all(
+          result.data.map(async (item: { url?: string }, index: number) => {
+            try {
+              if (!item?.url) {
+                return;
+              }
+
+              const resImg = await fetch(item.url);
+              if (!resImg.ok) {
+                throw new Error(`Failed to fetch image: ${resImg.statusText}`);
+              }
+
+              const buffer = Buffer.from(await resImg.arrayBuffer());
+              const extension = extname(new URL(item.url).pathname) || '.png';
+              const filename = `img_${Date.now()}_${index}${extension}`;
+              item.url = await persistGeneratedImage(req, buffer, filename);
+            } catch (err) {
+              console.error('Failed to persist generated image', err);
+            }
+          }),
+        );
+      }
+
+      return NextResponse.json(result);
+    }
+
+    if (isGeminiImageModel(model)) {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return NextResponse.json({ error: 'Missing GEMINI_API_KEY' }, { status: 500 });
+      }
+
+      const ai = new GoogleGenAI({ apiKey });
+      const aspectRatio = getClosestGeminiAspectRatio(width, height);
+      const referenceParts = await Promise.all(inputImages.map((source) => fetchImageSourceAsInlineData(source)));
+      const safeBatchSize = Math.max(1, Math.min(Number(batchSize) || 1, 8));
+      const persistedImages: { aspectRatio: string; url: string }[] = [];
+
+      for (let index = 0; index < safeBatchSize; index += 1) {
+        const response = await ai.models.generateContent({
+          model,
+          contents: [
+            { text: prompt },
+            ...referenceParts,
+          ],
+          config: {
+            responseModalities: ['Image'],
+            imageConfig: {
+              aspectRatio,
+            },
+          },
+        });
+
+        const parts = response.candidates?.[0]?.content?.parts ?? [];
+        const imageParts = parts.filter((part) => part.inlineData?.data);
+
+        if (imageParts.length === 0) {
+          const textFallback = parts
+            .map((part) => part.text?.trim())
+            .filter((value): value is string => Boolean(value))
+            .join(' ');
+
+          throw new Error(textFallback || 'Gemini returned no image data.');
+        }
+
+        for (let imageIndex = 0; imageIndex < imageParts.length; imageIndex += 1) {
+          const part = imageParts[imageIndex];
+          const mimeType = part.inlineData?.mimeType || 'image/png';
+          const buffer = Buffer.from(part.inlineData?.data || '', 'base64');
+          const extension = extensionFromMimeType(mimeType);
+          const filename = `gemini_${Date.now()}_${index}_${imageIndex}${extension}`;
+          const url = await persistGeneratedImage(req, buffer, filename);
+          persistedImages.push({ url, aspectRatio });
+        }
+      }
+
+      return NextResponse.json({
+        data: persistedImages,
+        meta: {
+          aspectRatio,
+          provider: 'gemini',
+        },
+      });
+    }
+
+    if (model === 'a2e') {
+      const token = process.env.A2E_API_KEY;
+      const base = process.env.A2E_API_BASE || 'https://video.a2e.ai/api/v1';
+
+      if (!token) {
+        return NextResponse.json({ error: 'Missing A2E_API_KEY' }, { status: 500 });
+      }
+
+      const now = new Date();
+      const name = now.toLocaleString('en-GB').replace(/\//g, '-');
+      const payload = {
+        name,
+        prompt,
+        width,
+        height,
+        model_type: model,
+        input_images: inputImages,
+      };
+
+      const startRes = await axios.post(`${base}/userText2Image/start`, payload, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const startData = startRes.data;
+      let taskId: string | undefined;
+
+      if (startData?.data) {
+        if (typeof startData.data === 'string') {
+          taskId = startData.data;
+        } else if (startData.data._id) {
+          taskId = startData.data._id;
+        } else if (startData.data.id) {
+          taskId = startData.data.id;
+        } else if (startData.data.task_id) {
+          taskId = startData.data.task_id;
+        }
+      }
+
+      if (!taskId) {
+        return NextResponse.json(startRes.data);
+      }
+
+      const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+      let images: string[] = [];
+
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        try {
+          const detailRes = await axios.get(`${base}/userText2Image/${taskId}`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+          const detail = detailRes.data;
+          let found: string[] = [];
+
+          if (detail?.data) {
+            const detailData = detail.data;
+            if (detailData.output?.images && Array.isArray(detailData.output.images)) {
+              found = detailData.output.images;
+            } else if (Array.isArray(detailData.images)) {
+              found = detailData.images;
+            } else if (Array.isArray(detailData.urls)) {
+              found = detailData.urls;
+            }
+          }
+
+          if (found.length > 0) {
+            images = found;
+            break;
+          }
+        } catch {
+          // Ignore transient polling failures.
+        }
+
+        await sleep(2000);
+      }
+
+      const result: { code: number; data: { id: string; images?: string[] }; message: string } = {
+        code: 0,
+        message: 'Task created successfully',
+        data: { id: taskId },
+      };
+
+      if (images.length > 0) {
+        const persisted: string[] = [];
+        await Promise.all(
+          images.map(async (imgUrl, idx) => {
+            try {
+              const resImg = await fetch(imgUrl);
+              if (!resImg.ok) {
+                return;
+              }
+
+              const buffer = Buffer.from(await resImg.arrayBuffer());
+              const extension = extname(new URL(imgUrl).pathname) || '.png';
+              const filename = `a2e_${taskId}_${idx}${extension}`;
+              persisted.push(await persistGeneratedImage(req, buffer, filename));
+            } catch {
+              // Ignore individual save failures.
+            }
+          }),
+        );
+
+        result.data.images = persisted;
+      }
+
+      return NextResponse.json(result);
+    }
+
+    return NextResponse.json({ error: 'Unsupported model' }, { status: 400 });
+  } catch (err: unknown) {
+    console.error(err);
+    const details = err instanceof Error ? err.message : 'Unknown error';
+    return NextResponse.json({ error: 'Failed to generate image', details }, { status: 500 });
+  }
+}
