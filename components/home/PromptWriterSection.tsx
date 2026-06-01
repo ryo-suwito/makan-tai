@@ -286,7 +286,7 @@ export function PromptWriterSection({
                 </button>
               </div>
               <p className="text-sm text-gray-600 mb-2">
-                Search is server-filtered, so the browser no longer downloads the full model catalog. Press Enter to use a custom slug that does not appear in the list. Favorites stay in this browser for quick reuse.
+                Search is server-filtered, so the browser no longer downloads the full model catalog. Press Enter to use a custom slug that does not appear in the list. Favorites are stored on this server for quick reuse across sessions.
               </p>
               {openRouterModelsError && <p className="voice-error-copy">{openRouterModelsError}</p>}
             </>

@@ -5,7 +5,6 @@ import { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { AlertDialog } from '@/components/home/AlertDialog';
 import { ConnectedCockpitSection } from '@/components/home/ConnectedCockpitSection';
-import { ImageResultsGallery } from '@/components/home/ImageResultsGallery';
 import { ImageStudioSection } from '@/components/home/ImageStudioSection';
 import { PromptWriterSection } from '@/components/home/PromptWriterSection';
 import { StyleDnaSection } from '@/components/home/StyleDnaSection';
@@ -38,7 +37,7 @@ import {
 import type { StyleDnaProfile } from '@/lib/style-dna';
 
 const CARTESIA_SAMPLE_RATE = 44100;
-const OPENROUTER_FAVORITES_STORAGE_KEY = 'openrouter-model-favorites';
+const MAX_OPENROUTER_FAVORITES = 12;
 
 function normalizeOpenRouterFavorite(input: unknown): OpenRouterModelOption | null {
   if (!input || typeof input !== 'object') {
@@ -87,7 +86,9 @@ async function getCartesiaToken(): Promise<string> {
 }
 
 export default function Home() {
+  const [promptPrefix, setPromptPrefix] = useState('');
   const [prompt, setPrompt] = useState('');
+  const [promptSuffix, setPromptSuffix] = useState('');
   const [savedPrompts, setSavedPrompts] = useState<SavedPrompt[]>([]);
   const [width, setWidth] = useState(1024);
   const [height, setHeight] = useState(1024);
@@ -147,6 +148,9 @@ export default function Home() {
   const isThreadsLengthExceeded = outputCharacterCount > 500;
   const isThreadsReady = Boolean(threadsConnection?.connected);
   const isSelectedOpenRouterFavorite = favoriteOpenRouterModels.some((item) => item.value === openRouterModel.value);
+  const composedImagePrompt = [promptPrefix.trim(), prompt.trim(), promptSuffix.trim()]
+    .filter(Boolean)
+    .join('\n\n');
 
   const closeAlertDialog = () => setAlertDialog(null);
 
@@ -309,6 +313,27 @@ export default function Home() {
     }
   };
 
+  const loadOpenRouterFavorites = async () => {
+    const response = await fetch('/api/openrouter/favorites');
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(typeof data.error === 'string' ? data.error : 'Failed to load OpenRouter favorites.');
+    }
+
+    const favorites = Array.isArray(data.data)
+      ? data.data as OpenRouterModelOption[]
+      : [];
+
+    setFavoriteOpenRouterModels(
+      dedupeOpenRouterFavorites(
+        favorites
+          .map(normalizeOpenRouterFavorite)
+          .filter((item): item is OpenRouterModelOption => item !== null),
+      ).slice(0, MAX_OPENROUTER_FAVORITES),
+    );
+  };
+
   const loadThreadsStatus = async () => {
     const response = await fetch('/api/threads/status');
     const data = await response.json().catch(() => ({}));
@@ -327,42 +352,9 @@ export default function Home() {
     void loadSavedAudioClips();
     void loadSystemPrompts().catch((err) => console.error('Failed to load system prompts', err));
     void loadStyleDnaProfiles().catch((err) => console.error('Failed to load Style DNA profiles', err));
+    void loadOpenRouterFavorites().catch((err) => console.error('Failed to load OpenRouter favorites', err));
     void loadThreadsStatus().catch((err) => console.error('Failed to load Threads status', err));
   }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    try {
-      const raw = window.localStorage.getItem(OPENROUTER_FAVORITES_STORAGE_KEY);
-      if (!raw) {
-        return;
-      }
-
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) {
-        return;
-      }
-
-      const favorites = dedupeOpenRouterFavorites(parsed.map(normalizeOpenRouterFavorite).filter((item): item is OpenRouterModelOption => item !== null)).slice(0, 12);
-      setFavoriteOpenRouterModels(favorites);
-    } catch (err) {
-      console.error('Failed to load OpenRouter favorites', err);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    window.localStorage.setItem(
-      OPENROUTER_FAVORITES_STORAGE_KEY,
-      JSON.stringify(favoriteOpenRouterModels),
-    );
-  }, [favoriteOpenRouterModels]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -599,11 +591,21 @@ export default function Home() {
   };
 
   const handleGenerate = async () => {
+    const finalPrompt = composedImagePrompt.trim();
+    if (!finalPrompt) {
+      setAlertDialog({
+        title: 'Image prompt needed',
+        message: 'Write a main prompt or use the prefix/suffix fields before generating an image.',
+        confirmLabel: 'Okay',
+      });
+      return;
+    }
+
     setLoading(true);
 
     try {
       const response = await axios.post('/api/generate', {
-        prompt,
+        prompt: finalPrompt,
         width,
         height,
         batchSize,
@@ -641,14 +643,15 @@ export default function Home() {
   };
 
   const handleSavePrompt = async () => {
-    if (!prompt) {
+    const text = composedImagePrompt.trim();
+    if (!text) {
       return;
     }
 
     await fetch('/api/prompts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: prompt }),
+      body: JSON.stringify({ text }),
     });
     await loadSavedPrompts();
   };
@@ -967,18 +970,45 @@ export default function Home() {
     setOpenRouterModelsError(null);
   };
 
-  const addOpenRouterFavorite = () => {
-    setFavoriteOpenRouterModels((current) => {
-      if (current.some((item) => item.value === openRouterModel.value)) {
-        return current;
+  const addOpenRouterFavorite = async () => {
+    try {
+      const response = await fetch('/api/openrouter/favorites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ favorite: openRouterModel }),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(typeof data.error === 'string' ? data.error : 'Failed to save OpenRouter favorite.');
       }
 
-      return dedupeOpenRouterFavorites([openRouterModel, ...current]).slice(0, 12);
-    });
+      const favorites = Array.isArray(data.data) ? data.data as OpenRouterModelOption[] : [];
+      setFavoriteOpenRouterModels(favorites);
+    } catch (err) {
+      console.error('Failed to save OpenRouter favorite', err);
+      showErrorDialog('OpenRouter favorite failed', err);
+    }
   };
 
-  const removeOpenRouterFavorite = (value: string) => {
-    setFavoriteOpenRouterModels((current) => current.filter((item) => item.value !== value));
+  const removeOpenRouterFavorite = async (value: string) => {
+    try {
+      const searchParams = new URLSearchParams({ value });
+      const response = await fetch(`/api/openrouter/favorites?${searchParams.toString()}`, {
+        method: 'DELETE',
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(typeof data.error === 'string' ? data.error : 'Failed to remove OpenRouter favorite.');
+      }
+
+      const favorites = Array.isArray(data.data) ? data.data as OpenRouterModelOption[] : [];
+      setFavoriteOpenRouterModels(favorites);
+    } catch (err) {
+      console.error('Failed to remove OpenRouter favorite', err);
+      showErrorDialog('OpenRouter favorite failed', err);
+    }
   };
 
   const applyGeminiTextToImagePrompt = () => {
@@ -1003,6 +1033,17 @@ export default function Home() {
   return (
     <>
       <div className="min-h-screen p-6">
+        
+        <ConnectedCockpitSection
+          threadsConnection={threadsConnection}
+          onConnectThreads={() => {
+            if (typeof window !== 'undefined') {
+              const returnTo = encodeURIComponent(window.location.pathname);
+              window.location.assign(`/api/threads/oauth/start?returnTo=${returnTo}`);
+            }
+          }}
+        />
+
         <h1 className="text-2xl font-bold mb-4">AI Image + Voice Studio</h1>
 
         <ImageStudioSection
@@ -1011,10 +1052,12 @@ export default function Home() {
           geminiAspectRatio={geminiAspectRatio}
           height={height}
           inputPrompt={prompt}
+          inputPromptPrefix={promptPrefix}
+          inputPromptSuffix={promptSuffix}
           inputReferenceImages={inputImages}
           isGeminiModel={isGeminiModel}
           isOpenAiModel={isOpenAiModel}
-          isSavingDisabled={!prompt.trim()}
+          isSavingDisabled={!composedImagePrompt.trim()}
           isSubmitting={loading}
           model={model}
           quality={quality}
@@ -1023,15 +1066,23 @@ export default function Home() {
           width={width}
           onAddReferenceImages={addReferenceImages}
           onBatchSizeChange={setBatchSize}
-          onClearPrompt={() => setPrompt('')}
+          onClearPrompt={() => {
+            setPromptPrefix('');
+            setPrompt('');
+            setPromptSuffix('');
+          }}
           onClearReferenceImages={clearReferenceImages}
           onDeleteSavedPrompt={(id) => { void handleDeletePrompt(id); }}
           onGenerateImage={() => { void handleGenerate(); }}
           onGeminiAspectRatioChange={setGeminiAspectRatio}
           onHeightChange={setHeight}
-          onLoadSavedPrompt={setPrompt}
+          onLoadSavedPromptToMain={setPrompt}
+          onLoadSavedPromptToPrefix={setPromptPrefix}
+          onLoadSavedPromptToSuffix={setPromptSuffix}
           onModelChange={setModel}
           onPromptChange={setPrompt}
+          onPromptPrefixChange={setPromptPrefix}
+          onPromptSuffixChange={setPromptSuffix}
           onQualityChange={setQuality}
           onRemoveReferenceImage={removeReferenceImage}
           onSavePrompt={() => { void handleSavePrompt(); }}
@@ -1054,16 +1105,6 @@ export default function Home() {
           onPromptChange={setTtsPrompt}
           onRefreshSavedAudio={() => { void loadSavedAudioClips(); }}
           onSelectedVoiceIdChange={setSelectedTtsVoiceId}
-        />
-
-        <ConnectedCockpitSection
-          threadsConnection={threadsConnection}
-          onConnectThreads={() => {
-            if (typeof window !== 'undefined') {
-              const returnTo = encodeURIComponent(window.location.pathname);
-              window.location.assign(`/api/threads/oauth/start?returnTo=${returnTo}`);
-            }
-          }}
         />
 
         <StyleDnaSection
@@ -1113,7 +1154,7 @@ export default function Home() {
           isThreadsReady={isThreadsReady}
           onApplyTextToImagePrompt={applyGeminiTextToImagePrompt}
           onApplyTextToVoicePrompt={applyGeminiTextToVoicePrompt}
-          onAddOpenRouterFavorite={addOpenRouterFavorite}
+          onAddOpenRouterFavorite={() => { void addOpenRouterFavorite(); }}
           onClearSystemPromptDraft={() => {
             setSystemPromptName('');
             setSystemPromptText('');
@@ -1126,7 +1167,7 @@ export default function Home() {
           onLoadSystemPromptIntoEditor={loadSystemPromptIntoEditor}
           onPublishToThreads={() => { void handlePublishToThreads(); }}
           onProviderChange={setTextProvider}
-          onRemoveOpenRouterFavorite={removeOpenRouterFavorite}
+          onRemoveOpenRouterFavorite={(value) => { void removeOpenRouterFavorite(value); }}
           onSaveSystemPrompt={() => { void handleSaveSystemPrompt(); }}
           onSelectOpenRouterModel={selectOpenRouterModel}
           onSelectQuickOpenRouterFavorite={selectOpenRouterModel}
@@ -1136,7 +1177,6 @@ export default function Home() {
           onSystemPromptDraftTextChange={setSystemPromptText}
         />
 
-        <ImageResultsGallery generatedImages={generated} />
       </div>
 
       {alertDialog && (

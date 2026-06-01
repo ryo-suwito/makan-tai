@@ -13,6 +13,8 @@ interface ImageStudioSectionProps {
   batchSize: number;
   geminiAspectRatio: GeminiAspectRatio;
   inputPrompt: string;
+  inputPromptPrefix: string;
+  inputPromptSuffix: string;
   inputReferenceImages: string[];
   isGeminiModel: boolean;
   isOpenAiModel: boolean;
@@ -32,9 +34,13 @@ interface ImageStudioSectionProps {
   onGenerateImage: () => void;
   onGeminiAspectRatioChange: (aspectRatio: GeminiAspectRatio) => void;
   onHeightChange: (value: number) => void;
-  onLoadSavedPrompt: (text: string) => void;
+  onLoadSavedPromptToMain: (text: string) => void;
+  onLoadSavedPromptToPrefix: (text: string) => void;
+  onLoadSavedPromptToSuffix: (text: string) => void;
   onModelChange: (model: ImageGenerationModel) => void;
   onPromptChange: (value: string) => void;
+  onPromptPrefixChange: (value: string) => void;
+  onPromptSuffixChange: (value: string) => void;
   onQualityChange: (quality: Quality) => void;
   onRemoveReferenceImage: (url: string) => void;
   onSavePrompt: () => void;
@@ -52,6 +58,8 @@ export function ImageStudioSection({
   batchSize,
   geminiAspectRatio,
   inputPrompt,
+  inputPromptPrefix,
+  inputPromptSuffix,
   inputReferenceImages,
   isGeminiModel,
   isOpenAiModel,
@@ -71,9 +79,13 @@ export function ImageStudioSection({
   onGenerateImage,
   onGeminiAspectRatioChange,
   onHeightChange,
-  onLoadSavedPrompt,
+  onLoadSavedPromptToMain,
+  onLoadSavedPromptToPrefix,
+  onLoadSavedPromptToSuffix,
   onModelChange,
   onPromptChange,
+  onPromptPrefixChange,
+  onPromptSuffixChange,
   onQualityChange,
   onRemoveReferenceImage,
   onSavePrompt,
@@ -168,16 +180,35 @@ export function ImageStudioSection({
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div>
-        <label className="block mb-1">Image Prompt</label>
+        <label className="block mb-1">Prompt Prefix</label>
+        <textarea
+          value={inputPromptPrefix}
+          onChange={(event) => onPromptPrefixChange(event.target.value)}
+          className="w-full p-2 border rounded mb-3"
+          rows={3}
+          placeholder="Optional setup, camera language, framing, brand voice..."
+        />
+
+        <label className="block mb-1">Main Image Prompt</label>
         <textarea
           value={inputPrompt}
           onChange={(event) => onPromptChange(event.target.value)}
-          className="w-full p-2 border rounded"
+          className="w-full p-2 border rounded mb-3"
           rows={4}
+          placeholder="What should actually happen in the image?"
+        />
+
+        <label className="block mb-1">Prompt Suffix</label>
+        <textarea
+          value={inputPromptSuffix}
+          onChange={(event) => onPromptSuffixChange(event.target.value)}
+          className="w-full p-2 border rounded"
+          rows={3}
+          placeholder="Optional finishing constraints, quality cues, exclusions..."
         />
         <div className="flex space-x-2 mt-1">
           <button onClick={onSavePrompt} disabled={isSavingDisabled} className="px-3 py-1 bg-blue-500 text-white rounded">Save</button>
-          <button onClick={onClearPrompt} className="px-3 py-1 bg-gray-300 rounded">Clear</button>
+          <button onClick={onClearPrompt} className="px-3 py-1 bg-gray-300 rounded">Clear all</button>
         </div>
 
         <div className="system-prompt-library">
@@ -198,8 +229,14 @@ export function ImageStudioSection({
                 </div>
                 <p className="system-prompt-preview">{item.text}</p>
                 <div className="system-prompt-actions">
-                  <button type="button" className="gemini-secondary-button" onClick={() => onLoadSavedPrompt(item.text)}>
-                    Load
+                  <button type="button" className="gemini-secondary-button" onClick={() => onLoadSavedPromptToPrefix(item.text)}>
+                    Load to prefix
+                  </button>
+                  <button type="button" className="gemini-secondary-button" onClick={() => onLoadSavedPromptToMain(item.text)}>
+                    Load to main
+                  </button>
+                  <button type="button" className="gemini-secondary-button" onClick={() => onLoadSavedPromptToSuffix(item.text)}>
+                    Load to suffix
                   </button>
                   <button type="button" className="system-prompt-delete" onClick={() => onDeleteSavedPrompt(item.id)}>
                     Delete
