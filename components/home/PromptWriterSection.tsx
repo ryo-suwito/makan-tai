@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react';
 import AsyncCreatableSelect from 'react-select/async-creatable';
 import type { SingleValue } from 'react-select';
 import {
@@ -9,6 +10,7 @@ import {
   type SystemPrompt,
   type TextGenerationResult,
   type TextProvider,
+  type WorkflowSegmentDraft,
 } from '@/components/home/types';
 
 interface PromptWriterSectionProps {
@@ -30,6 +32,7 @@ interface PromptWriterSectionProps {
   systemPromptDraftText: string;
   systemPromptSaving: boolean;
   systemPrompts: SystemPrompt[];
+  isCreatingWorkflow: boolean;
   isGenerating: boolean;
   isPublishingToThreads: boolean;
   isThreadsLengthExceeded: boolean;
@@ -38,6 +41,7 @@ interface PromptWriterSectionProps {
   onApplyTextToVoicePrompt: () => void;
   onAddOpenRouterFavorite: () => void;
   onClearSystemPromptDraft: () => void;
+  onCreateWorkflowFromSegments: (title: string, segments: WorkflowSegmentDraft[]) => Promise<void>;
   onCurrentInputChange: (value: string) => void;
   onCurrentOutputTextChange: (value: string) => void;
   onDeleteSystemPrompt: (id: number) => void;
@@ -75,6 +79,7 @@ export function PromptWriterSection({
   systemPromptDraftText,
   systemPromptSaving,
   systemPrompts,
+  isCreatingWorkflow,
   isGenerating,
   isPublishingToThreads,
   isThreadsLengthExceeded,
@@ -83,6 +88,7 @@ export function PromptWriterSection({
   onApplyTextToVoicePrompt,
   onAddOpenRouterFavorite,
   onClearSystemPromptDraft,
+  onCreateWorkflowFromSegments,
   onCurrentInputChange,
   onCurrentOutputTextChange,
   onDeleteSystemPrompt,
@@ -100,12 +106,41 @@ export function PromptWriterSection({
   onSystemPromptDraftNameChange,
   onSystemPromptDraftTextChange,
 }: PromptWriterSectionProps) {
+  const [detailPrompt, setDetailPrompt] = useState<SystemPrompt | null>(null);
+  const [workflowTitle, setWorkflowTitle] = useState('');
+  const [workflowModalOpen, setWorkflowModalOpen] = useState(false);
   const threadsButtonLabel = isPublishingToThreads ? 'Publishing to Threads...' : 'Publish to Threads';
   const openRouterDefaultOptions = [
     ...favoriteOpenRouterModels,
     OPENROUTER_FREE_OPTION,
     OPENROUTER_AUTO_OPTION,
   ].filter((option, index, all) => all.findIndex((item) => item.value === option.value) === index);
+  const formatSystemPromptDate = (date: string) => new Date(date).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+  const workflowSegments = useMemo(
+    () => parseWorkflowSegmentsFromText(currentOutputText),
+    [currentOutputText],
+  );
+  const canAddToWorkflow = workflowSegments.length > 0;
+
+  const openWorkflowModal = () => {
+    const fallbackTitle = currentResult?.systemPromptName || currentResult?.styleDnaName || 'Generated workflow';
+    setWorkflowTitle(fallbackTitle);
+    setWorkflowModalOpen(true);
+  };
+
+  const submitWorkflow = async () => {
+    const title = workflowTitle.trim();
+    if (!title || workflowSegments.length === 0) {
+      return;
+    }
+
+    await onCreateWorkflowFromSegments(title, workflowSegments);
+    setWorkflowModalOpen(false);
+  };
 
   return (
     <div className="gemini-section mt-6">
@@ -155,28 +190,62 @@ export function PromptWriterSection({
               <strong>Saved system prompts</strong>
               <span className="system-prompt-count">{systemPrompts.length}</span>
             </div>
-            <div className="system-prompt-list">
+            <div className="system-prompt-table-shell">
               {systemPrompts.length === 0 && (
                 <p className="audio-empty-copy">No system prompts saved yet.</p>
               )}
 
-              {systemPrompts.map((item) => (
-                <div key={item.id} className="system-prompt-card">
-                  <div className="system-prompt-card-header">
-                    <strong>{item.name}</strong>
-                    <span className="audio-date">{new Date(item.created_at).toLocaleDateString()}</span>
-                  </div>
-                  <p className="system-prompt-preview">{item.text}</p>
-                  <div className="system-prompt-actions">
-                    <button type="button" className="gemini-secondary-button" onClick={() => onLoadSystemPromptIntoEditor(item)}>
-                      Load
-                    </button>
-                    <button type="button" className="system-prompt-delete" onClick={() => onDeleteSystemPrompt(item.id)}>
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              ))}
+              {systemPrompts.length > 0 && (
+                <table className="system-prompt-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Name</th>
+                      <th scope="col">Preview</th>
+                      <th scope="col">Saved</th>
+                      <th scope="col">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {systemPrompts.map((item) => (
+                      <tr
+                        key={item.id}
+                        className={selectedSystemPromptId === String(item.id) ? 'system-prompt-row-active' : undefined}
+                        onClick={() => setDetailPrompt(item)}
+                      >
+                        <td>
+                          <button
+                            type="button"
+                            className="system-prompt-name-button"
+                            onClick={() => setDetailPrompt(item)}
+                          >
+                            {item.name}
+                          </button>
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="system-prompt-preview-button"
+                            onClick={() => setDetailPrompt(item)}
+                          >
+                            {item.text}
+                          </button>
+                        </td>
+                        <td className="system-prompt-date-cell">{formatSystemPromptDate(item.created_at)}</td>
+                        <td>
+                          <div className="system-prompt-table-actions" onClick={(event) => event.stopPropagation()}>
+                            <button type="button" className="system-prompt-load-small" onClick={() => onLoadSystemPromptIntoEditor(item)}>
+                              Load
+                            </button>
+                            <button type="button" className="system-prompt-delete-small" onClick={() => onDeleteSystemPrompt(item.id)}>
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
         </div>
@@ -344,13 +413,13 @@ export function PromptWriterSection({
               onClick={onGenerateText}
               disabled={isGenerating}
             >
-              {isGenerating ? 'Generating...' : provider === 'openrouter' ? 'Generate with OpenRouter' : 'Generate with Gemini'}
+              {isGenerating ? 'Generating...' : 'Generate'}
             </button>
           </div>
 
           <div className="gemini-result-card">
             <div className="gemini-result-header">
-              <strong>{currentResult?.provider === 'openrouter' ? 'OpenRouter output' : 'Gemini output'}</strong>
+              <strong>Output</strong>
               {currentResult?.model && <span className="voice-language-pill">{currentResult.model}</span>}
             </div>
 
@@ -400,6 +469,11 @@ export function PromptWriterSection({
                   rows={10}
                 />
                 <div className="gemini-copy-row">
+                  {canAddToWorkflow && (
+                    <button type="button" className="gemini-save-button" onClick={openWorkflowModal}>
+                      Add to workflow
+                    </button>
+                  )}
                   <button type="button" className="gemini-copy-button" onClick={onApplyTextToImagePrompt}>
                     Copy to image prompt
                   </button>
@@ -420,6 +494,157 @@ export function PromptWriterSection({
           </div>
         </div>
       </div>
+
+      {detailPrompt && (
+        <div className="system-prompt-detail-overlay" role="presentation" onClick={() => setDetailPrompt(null)}>
+          <div
+            className="system-prompt-detail-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="system-prompt-detail-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="system-prompt-detail-header">
+              <div>
+                <p className="voice-section-kicker">Saved system prompt</p>
+                <h3 id="system-prompt-detail-title">{detailPrompt.name}</h3>
+              </div>
+              <button
+                type="button"
+                className="system-prompt-detail-close"
+                onClick={() => setDetailPrompt(null)}
+                aria-label="Close system prompt detail"
+              >
+                x
+              </button>
+            </div>
+            <p className="system-prompt-detail-date">Saved {formatSystemPromptDate(detailPrompt.created_at)}</p>
+            <pre className="system-prompt-detail-text">{detailPrompt.text}</pre>
+            <div className="system-prompt-detail-actions">
+              <button
+                type="button"
+                className="gemini-secondary-button"
+                onClick={() => {
+                  onLoadSystemPromptIntoEditor(detailPrompt);
+                  setDetailPrompt(null);
+                }}
+              >
+                Load
+              </button>
+              <button
+                type="button"
+                className="system-prompt-delete"
+                onClick={() => {
+                  onDeleteSystemPrompt(detailPrompt.id);
+                  setDetailPrompt(null);
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {workflowModalOpen && (
+        <div className="system-prompt-detail-overlay" role="presentation" onClick={() => setWorkflowModalOpen(false)}>
+          <div
+            className="system-prompt-detail-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="workflow-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="system-prompt-detail-header">
+              <div>
+                <p className="voice-section-kicker">Workflow</p>
+                <h3 id="workflow-title">Add segments to workflow</h3>
+              </div>
+              <button
+                type="button"
+                className="system-prompt-detail-close"
+                onClick={() => setWorkflowModalOpen(false)}
+                aria-label="Close workflow dialog"
+              >
+                x
+              </button>
+            </div>
+            <p className="system-prompt-detail-date">
+              {workflowSegments.length} segment{workflowSegments.length === 1 ? '' : 's'} will start in Todo.
+            </p>
+            <label className="block mb-1">Workflow Title</label>
+            <input
+              value={workflowTitle}
+              onChange={(event) => setWorkflowTitle(event.target.value)}
+              className="w-full p-2 border rounded"
+              placeholder="Launch script batch"
+            />
+            <div className="system-prompt-detail-actions">
+              <button
+                type="button"
+                className="gemini-secondary-button"
+                onClick={() => setWorkflowModalOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="gemini-save-button"
+                onClick={() => { void submitWorkflow(); }}
+                disabled={!workflowTitle.trim() || isCreatingWorkflow}
+              >
+                {isCreatingWorkflow ? 'Saving...' : 'Save workflow'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
+}
+
+function extractJsonCandidate(value: string) {
+  const trimmed = value.trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  return fenced?.[1]?.trim() || trimmed;
+}
+
+function parseWorkflowSegmentsFromText(value: string): WorkflowSegmentDraft[] {
+  if (!value.trim()) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(extractJsonCandidate(value)) as unknown;
+    if (!parsed || typeof parsed !== 'object' || !Array.isArray((parsed as { segments?: unknown }).segments)) {
+      return [];
+    }
+
+    return (parsed as { segments: unknown[] }).segments
+      .map((segment, index) => {
+        if (!segment || typeof segment !== 'object') {
+          return null;
+        }
+
+        const record = segment as Record<string, unknown>;
+        const text = typeof record.text === 'string' ? record.text.trim() : '';
+        const imagePrompt = typeof record.image_prompt === 'string' ? record.image_prompt.trim() : '';
+        const videoPrompt = typeof record.video_prompt === 'string' ? record.video_prompt.trim() : '';
+
+        if (!text && !imagePrompt && !videoPrompt) {
+          return null;
+        }
+
+        return {
+          order: Number.isFinite(Number(record.order)) ? Number(record.order) : index + 1,
+          text,
+          image_prompt: imagePrompt,
+          video_prompt: videoPrompt,
+        } satisfies WorkflowSegmentDraft;
+      })
+      .filter((segment): segment is WorkflowSegmentDraft => segment !== null)
+      .sort((a, b) => a.order - b.order);
+  } catch {
+    return [];
+  }
 }

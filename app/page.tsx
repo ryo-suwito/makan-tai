@@ -23,8 +23,12 @@ import {
   type TextGenerationResult,
   type TextProvider,
   type ThreadsConnectionStatus,
+  type Workflow,
+  type WorkflowSegment,
+  type WorkflowSegmentDraft,
 } from '@/components/home/types';
 import { VoiceGeneratorSection } from '@/components/home/VoiceGeneratorSection';
+import { WorkflowBoardSection } from '@/components/home/WorkflowBoardSection';
 import { estimateTotalCost } from '@/lib/cost';
 import {
   GEMINI_ASPECT_RATIO_DIMENSIONS,
@@ -38,6 +42,14 @@ import type { StyleDnaProfile } from '@/lib/style-dna';
 
 const CARTESIA_SAMPLE_RATE = 44100;
 const MAX_OPENROUTER_FAVORITES = 12;
+const FLOATING_SHORTCUTS = [
+  { href: '#cockpit', label: 'Connect', shortLabel: 'Hub' },
+  { href: '#image-studio', label: 'Image Studio', shortLabel: 'Img' },
+  { href: '#voice-generator', label: 'Voice Generator', shortLabel: 'Voice' },
+  { href: '#style-dna', label: 'Style DNA', shortLabel: 'DNA' },
+  { href: '#prompt-writer', label: 'Prompt Writer', shortLabel: 'Text' },
+  { href: '#workflows', label: 'Workflows', shortLabel: 'Flow' },
+];
 
 function normalizeOpenRouterFavorite(input: unknown): OpenRouterModelOption | null {
   if (!input || typeof input !== 'object') {
@@ -131,6 +143,8 @@ export default function Home() {
   const [geminiLoading, setGeminiLoading] = useState(false);
   const [threadsPublishing, setThreadsPublishing] = useState(false);
   const [threadsConnection, setThreadsConnection] = useState<ThreadsConnectionStatus | null>(null);
+  const [workflows, setWorkflows] = useState<Workflow[]>([]);
+  const [workflowSaving, setWorkflowSaving] = useState(false);
 
   const [alertDialog, setAlertDialog] = useState<AlertDialogState | null>(null);
   const ttsCleanupRef = useRef<(() => Promise<void>) | null>(null);
@@ -345,6 +359,17 @@ export default function Home() {
     setThreadsConnection((data.data as ThreadsConnectionStatus | undefined) ?? null);
   };
 
+  const loadWorkflows = async () => {
+    const response = await fetch('/api/workflows');
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(typeof data.error === 'string' ? data.error : 'Failed to load workflows.');
+    }
+
+    setWorkflows(Array.isArray(data.data) ? data.data as Workflow[] : []);
+  };
+
   useEffect(() => {
     void loadSavedPrompts().catch((err) => console.error('Failed to load saved prompts', err));
     void loadAvailableImages().catch((err) => console.error('Failed to load images', err));
@@ -354,6 +379,7 @@ export default function Home() {
     void loadStyleDnaProfiles().catch((err) => console.error('Failed to load Style DNA profiles', err));
     void loadOpenRouterFavorites().catch((err) => console.error('Failed to load OpenRouter favorites', err));
     void loadThreadsStatus().catch((err) => console.error('Failed to load Threads status', err));
+    void loadWorkflows().catch((err) => console.error('Failed to load workflows', err));
   }, []);
 
   useEffect(() => {
@@ -1025,6 +1051,86 @@ export default function Home() {
     setTtsPrompt(geminiOutputText.trim());
   };
 
+  const createWorkflowFromSegments = async (title: string, segments: WorkflowSegmentDraft[]) => {
+    setWorkflowSaving(true);
+
+    try {
+      const response = await fetch('/api/workflows', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, segments }),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(typeof data.error === 'string' ? data.error : 'Failed to create workflow.');
+      }
+
+      await loadWorkflows();
+      setAlertDialog({
+        title: 'Workflow saved',
+        message: `"${title}" is now available on the workflow board.`,
+        confirmLabel: 'Nice',
+      });
+    } catch (err) {
+      console.error('Failed to create workflow', err);
+      showErrorDialog('Workflow save failed', err);
+    } finally {
+      setWorkflowSaving(false);
+    }
+  };
+
+  const generateWorkflowImage = async (segment: WorkflowSegment) => {
+    const segmentPrompt = (segment.image_prompt || segment.text).trim();
+    if (!segmentPrompt) {
+      throw new Error('This workflow segment needs text or an image prompt before generating an image.');
+    }
+
+    setPrompt(segmentPrompt);
+    setLoading(true);
+
+    try {
+      const finalPrompt = [promptPrefix.trim(), segmentPrompt, promptSuffix.trim()]
+        .filter(Boolean)
+        .join('\n\n');
+      const response = await axios.post('/api/generate', {
+        prompt: finalPrompt,
+        width,
+        height,
+        batchSize: 1,
+        model,
+        quality,
+        inputImages,
+      });
+
+      const urls: string[] = [];
+      const generatedItems = response.data?.data;
+
+      if (Array.isArray(generatedItems)) {
+        generatedItems.forEach((item: { url?: string }) => {
+          if (item?.url) {
+            urls.push(item.url);
+          }
+        });
+      } else if (model === 'a2e') {
+        const responseData = response.data?.data;
+        if (responseData && Array.isArray(responseData.images)) {
+          urls.push(...responseData.images);
+        }
+      }
+
+      if (urls.length === 0) {
+        throw new Error('Image generation completed without returning an image URL.');
+      }
+
+      setGenerated(urls.map((url) => ({ url })));
+      await loadAvailableImages();
+      return urls[0];
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const loadSystemPromptIntoEditor = (item: SystemPrompt) => {
     setSystemPromptName(item.name);
     setSystemPromptText(item.text);
@@ -1032,150 +1138,182 @@ export default function Home() {
 
   return (
     <>
+      <nav className="floating-shortcuts" aria-label="Tool shortcuts">
+        {FLOATING_SHORTCUTS.map((shortcut) => (
+          <a key={shortcut.href} className="floating-shortcut-link" href={shortcut.href}>
+            <span aria-hidden="true" className="floating-shortcut-dot" />
+            <span className="floating-shortcut-short">{shortcut.shortLabel}</span>
+            <span className="floating-shortcut-label">{shortcut.label}</span>
+          </a>
+        ))}
+      </nav>
+
       <div className="min-h-screen p-6">
-        
-        <ConnectedCockpitSection
-          threadsConnection={threadsConnection}
-          onConnectThreads={() => {
-            if (typeof window !== 'undefined') {
-              const returnTo = encodeURIComponent(window.location.pathname);
-              window.location.assign(`/api/threads/oauth/start?returnTo=${returnTo}`);
-            }
-          }}
-        />
+        <section id="cockpit" className="shortcut-target" aria-label="Connected cockpit">
+          <ConnectedCockpitSection
+            threadsConnection={threadsConnection}
+            onConnectThreads={() => {
+              if (typeof window !== 'undefined') {
+                const returnTo = encodeURIComponent(window.location.pathname);
+                window.location.assign(`/api/threads/oauth/start?returnTo=${returnTo}`);
+              }
+            }}
+          />
+        </section>
 
         <h1 className="text-2xl font-bold mb-4">AI Image + Voice Studio</h1>
 
-        <ImageStudioSection
-          availableImages={availableImages}
-          batchSize={batchSize}
-          geminiAspectRatio={geminiAspectRatio}
-          height={height}
-          inputPrompt={prompt}
-          inputPromptPrefix={promptPrefix}
-          inputPromptSuffix={promptSuffix}
-          inputReferenceImages={inputImages}
-          isGeminiModel={isGeminiModel}
-          isOpenAiModel={isOpenAiModel}
-          isSavingDisabled={!composedImagePrompt.trim()}
-          isSubmitting={loading}
-          model={model}
-          quality={quality}
-          savedPrompts={savedPrompts}
-          totalCost={totalCost}
-          width={width}
-          onAddReferenceImages={addReferenceImages}
-          onBatchSizeChange={setBatchSize}
-          onClearPrompt={() => {
-            setPromptPrefix('');
-            setPrompt('');
-            setPromptSuffix('');
-          }}
-          onClearReferenceImages={clearReferenceImages}
-          onDeleteSavedPrompt={(id) => { void handleDeletePrompt(id); }}
-          onGenerateImage={() => { void handleGenerate(); }}
-          onGeminiAspectRatioChange={setGeminiAspectRatio}
-          onHeightChange={setHeight}
-          onLoadSavedPromptToMain={setPrompt}
-          onLoadSavedPromptToPrefix={setPromptPrefix}
-          onLoadSavedPromptToSuffix={setPromptSuffix}
-          onModelChange={setModel}
-          onPromptChange={setPrompt}
-          onPromptPrefixChange={setPromptPrefix}
-          onPromptSuffixChange={setPromptSuffix}
-          onQualityChange={setQuality}
-          onRemoveReferenceImage={removeReferenceImage}
-          onSavePrompt={() => { void handleSavePrompt(); }}
-          onTogglePreviousImage={toggleReferenceImage}
-          onWidthChange={setWidth}
-        />
+        <section id="image-studio" className="shortcut-target" aria-label="Image studio">
+          <ImageStudioSection
+            availableImages={availableImages}
+            batchSize={batchSize}
+            geminiAspectRatio={geminiAspectRatio}
+            height={height}
+            inputPrompt={prompt}
+            inputPromptPrefix={promptPrefix}
+            inputPromptSuffix={promptSuffix}
+            inputReferenceImages={inputImages}
+            isGeminiModel={isGeminiModel}
+            isOpenAiModel={isOpenAiModel}
+            isSavingDisabled={!composedImagePrompt.trim()}
+            isSubmitting={loading}
+            model={model}
+            quality={quality}
+            savedPrompts={savedPrompts}
+            totalCost={totalCost}
+            width={width}
+            onAddReferenceImages={addReferenceImages}
+            onBatchSizeChange={setBatchSize}
+            onClearPrompt={() => {
+              setPromptPrefix('');
+              setPrompt('');
+              setPromptSuffix('');
+            }}
+            onClearReferenceImages={clearReferenceImages}
+            onDeleteSavedPrompt={(id) => { void handleDeletePrompt(id); }}
+            onGenerateImage={() => { void handleGenerate(); }}
+            onGeminiAspectRatioChange={setGeminiAspectRatio}
+            onHeightChange={setHeight}
+            onLoadSavedPromptToMain={setPrompt}
+            onLoadSavedPromptToPrefix={setPromptPrefix}
+            onLoadSavedPromptToSuffix={setPromptSuffix}
+            onModelChange={setModel}
+            onPromptChange={setPrompt}
+            onPromptPrefixChange={setPromptPrefix}
+            onPromptSuffixChange={setPromptSuffix}
+            onQualityChange={setQuality}
+            onRemoveReferenceImage={removeReferenceImage}
+            onSavePrompt={() => { void handleSavePrompt(); }}
+            onTogglePreviousImage={toggleReferenceImage}
+            onWidthChange={setWidth}
+          />
+        </section>
 
-        <VoiceGeneratorSection
-          prompt={ttsPrompt}
-          savedAudioClips={savedAudioClips}
-          selectedVoice={selectedTtsVoice}
-          selectedVoiceId={selectedTtsVoiceId}
-          voices={ttsVoices}
-          voicesError={ttsVoicesError}
-          voicesLoading={ttsVoicesLoading}
-          isGeneratingAudio={ttsGenerating}
-          isPreviewing={ttsPreviewLoading}
-          onGenerateAudio={() => { void handleGenerateAudio(); }}
-          onPreviewPrompt={() => { void handlePreviewPrompt(); }}
-          onPromptChange={setTtsPrompt}
-          onRefreshSavedAudio={() => { void loadSavedAudioClips(); }}
-          onSelectedVoiceIdChange={setSelectedTtsVoiceId}
-        />
+        <section id="voice-generator" className="shortcut-target" aria-label="Voice generator">
+          <VoiceGeneratorSection
+            prompt={ttsPrompt}
+            savedAudioClips={savedAudioClips}
+            selectedVoice={selectedTtsVoice}
+            selectedVoiceId={selectedTtsVoiceId}
+            voices={ttsVoices}
+            voicesError={ttsVoicesError}
+            voicesLoading={ttsVoicesLoading}
+            isGeneratingAudio={ttsGenerating}
+            isPreviewing={ttsPreviewLoading}
+            onGenerateAudio={() => { void handleGenerateAudio(); }}
+            onPreviewPrompt={() => { void handlePreviewPrompt(); }}
+            onPromptChange={setTtsPrompt}
+            onRefreshSavedAudio={() => { void loadSavedAudioClips(); }}
+            onSelectedVoiceIdChange={setSelectedTtsVoiceId}
+          />
+        </section>
 
-        <StyleDnaSection
-          analysisEngineLabel={styleDnaEngineLabel}
-          draftName={styleDnaName}
-          draftProfile={styleDnaDraftProfile}
-          isAnalyzing={styleDnaAnalyzing}
-          isSaving={styleDnaSaving}
-          samples={styleDnaSamples}
-          savedProfiles={styleDnaProfiles}
-          selectedStyleDnaId={selectedStyleDnaId}
-          onAnalyze={() => { void handleAnalyzeStyleDna(); }}
-          onClearDraft={() => {
-            setStyleDnaName('');
-            setStyleDnaSamples('');
-            setStyleDnaDraftProfile(null);
-          }}
-          onDeleteProfile={(id) => { void handleDeleteStyleDna(id); }}
-          onDraftNameChange={setStyleDnaName}
-          onSamplesChange={setStyleDnaSamples}
-          onSave={() => { void handleSaveStyleDna(); }}
-          onSelectProfileForWriter={setSelectedStyleDnaId}
-        />
+        <section id="style-dna" className="shortcut-target" aria-label="Style DNA">
+          <StyleDnaSection
+            analysisEngineLabel={styleDnaEngineLabel}
+            draftName={styleDnaName}
+            draftProfile={styleDnaDraftProfile}
+            isAnalyzing={styleDnaAnalyzing}
+            isSaving={styleDnaSaving}
+            samples={styleDnaSamples}
+            savedProfiles={styleDnaProfiles}
+            selectedStyleDnaId={selectedStyleDnaId}
+            onAnalyze={() => { void handleAnalyzeStyleDna(); }}
+            onClearDraft={() => {
+              setStyleDnaName('');
+              setStyleDnaSamples('');
+              setStyleDnaDraftProfile(null);
+            }}
+            onDeleteProfile={(id) => { void handleDeleteStyleDna(id); }}
+            onDraftNameChange={setStyleDnaName}
+            onSamplesChange={setStyleDnaSamples}
+            onSave={() => { void handleSaveStyleDna(); }}
+            onSelectProfileForWriter={setSelectedStyleDnaId}
+          />
+        </section>
 
-        <PromptWriterSection
-          currentInput={geminiInput}
-          currentOutputText={geminiOutputText}
-          currentResult={geminiResult}
-          currentStyleDna={selectedStyleDna}
-          currentSystemPrompt={selectedSystemPrompt}
-          favoriteOpenRouterModels={favoriteOpenRouterModels}
-          isSelectedOpenRouterFavorite={isSelectedOpenRouterFavorite}
-          openRouterModel={openRouterModel}
-          openRouterModelsError={openRouterModelsError}
-          outputCharacterCount={outputCharacterCount}
-          provider={textProvider}
-          selectedStyleDnaId={selectedStyleDnaId}
-          selectedSystemPromptId={selectedSystemPromptId}
-          styleDnaProfiles={styleDnaProfiles}
-          systemPromptDraftName={systemPromptName}
-          systemPromptDraftText={systemPromptText}
-          systemPromptSaving={systemPromptSaving}
-          systemPrompts={systemPrompts}
-          isGenerating={geminiLoading}
-          isPublishingToThreads={threadsPublishing}
-          isThreadsLengthExceeded={isThreadsLengthExceeded}
-          isThreadsReady={isThreadsReady}
-          onApplyTextToImagePrompt={applyGeminiTextToImagePrompt}
-          onApplyTextToVoicePrompt={applyGeminiTextToVoicePrompt}
-          onAddOpenRouterFavorite={() => { void addOpenRouterFavorite(); }}
-          onClearSystemPromptDraft={() => {
-            setSystemPromptName('');
-            setSystemPromptText('');
-          }}
-          onCurrentInputChange={setGeminiInput}
-          onCurrentOutputTextChange={setGeminiOutputText}
-          onDeleteSystemPrompt={(id) => { void handleDeleteSystemPrompt(id); }}
-          onGenerateText={() => { void handleGenerateText(); }}
-          onLoadOpenRouterOptions={loadOpenRouterOptions}
-          onLoadSystemPromptIntoEditor={loadSystemPromptIntoEditor}
-          onPublishToThreads={() => { void handlePublishToThreads(); }}
-          onProviderChange={setTextProvider}
-          onRemoveOpenRouterFavorite={(value) => { void removeOpenRouterFavorite(value); }}
-          onSaveSystemPrompt={() => { void handleSaveSystemPrompt(); }}
-          onSelectOpenRouterModel={selectOpenRouterModel}
-          onSelectQuickOpenRouterFavorite={selectOpenRouterModel}
-          onSelectedStyleDnaIdChange={setSelectedStyleDnaId}
-          onSelectedSystemPromptIdChange={setSelectedSystemPromptId}
-          onSystemPromptDraftNameChange={setSystemPromptName}
-          onSystemPromptDraftTextChange={setSystemPromptText}
-        />
+        <section id="prompt-writer" className="shortcut-target" aria-label="Prompt writer">
+          <PromptWriterSection
+            currentInput={geminiInput}
+            currentOutputText={geminiOutputText}
+            currentResult={geminiResult}
+            currentStyleDna={selectedStyleDna}
+            currentSystemPrompt={selectedSystemPrompt}
+            favoriteOpenRouterModels={favoriteOpenRouterModels}
+            isSelectedOpenRouterFavorite={isSelectedOpenRouterFavorite}
+            openRouterModel={openRouterModel}
+            openRouterModelsError={openRouterModelsError}
+            outputCharacterCount={outputCharacterCount}
+            provider={textProvider}
+            selectedStyleDnaId={selectedStyleDnaId}
+            selectedSystemPromptId={selectedSystemPromptId}
+            styleDnaProfiles={styleDnaProfiles}
+            systemPromptDraftName={systemPromptName}
+            systemPromptDraftText={systemPromptText}
+            systemPromptSaving={systemPromptSaving}
+            systemPrompts={systemPrompts}
+            isCreatingWorkflow={workflowSaving}
+            isGenerating={geminiLoading}
+            isPublishingToThreads={threadsPublishing}
+            isThreadsLengthExceeded={isThreadsLengthExceeded}
+            isThreadsReady={isThreadsReady}
+            onApplyTextToImagePrompt={applyGeminiTextToImagePrompt}
+            onApplyTextToVoicePrompt={applyGeminiTextToVoicePrompt}
+            onAddOpenRouterFavorite={() => { void addOpenRouterFavorite(); }}
+            onClearSystemPromptDraft={() => {
+              setSystemPromptName('');
+              setSystemPromptText('');
+            }}
+            onCreateWorkflowFromSegments={createWorkflowFromSegments}
+            onCurrentInputChange={setGeminiInput}
+            onCurrentOutputTextChange={setGeminiOutputText}
+            onDeleteSystemPrompt={(id) => { void handleDeleteSystemPrompt(id); }}
+            onGenerateText={() => { void handleGenerateText(); }}
+            onLoadOpenRouterOptions={loadOpenRouterOptions}
+            onLoadSystemPromptIntoEditor={loadSystemPromptIntoEditor}
+            onPublishToThreads={() => { void handlePublishToThreads(); }}
+            onProviderChange={setTextProvider}
+            onRemoveOpenRouterFavorite={(value) => { void removeOpenRouterFavorite(value); }}
+            onSaveSystemPrompt={() => { void handleSaveSystemPrompt(); }}
+            onSelectOpenRouterModel={selectOpenRouterModel}
+            onSelectQuickOpenRouterFavorite={selectOpenRouterModel}
+            onSelectedStyleDnaIdChange={setSelectedStyleDnaId}
+            onSelectedSystemPromptIdChange={setSelectedSystemPromptId}
+            onSystemPromptDraftNameChange={setSystemPromptName}
+            onSystemPromptDraftTextChange={setSystemPromptText}
+          />
+        </section>
+
+        <section id="workflows" className="shortcut-target" aria-label="Workflows">
+          <WorkflowBoardSection
+            isLoading={loading || ttsGenerating}
+            selectedVoice={selectedTtsVoice}
+            workflows={workflows}
+            onError={showErrorDialog}
+            onGenerateImage={generateWorkflowImage}
+            onReload={loadWorkflows}
+          />
+        </section>
 
       </div>
 

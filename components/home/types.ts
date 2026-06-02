@@ -77,6 +77,38 @@ export interface TextGenerationResult {
   text: string;
 }
 
+export type WorkflowSegmentStatus = 'todo' | 'voice' | 'image' | 'video' | 'done';
+
+export interface WorkflowSegmentDraft {
+  image_prompt: string;
+  order: number;
+  text: string;
+  video_prompt: string;
+}
+
+export interface WorkflowSegment {
+  created_at: string;
+  id: number;
+  image_prompt: string;
+  image_url: string | null;
+  order: number;
+  status: WorkflowSegmentStatus;
+  text: string;
+  updated_at: string;
+  video_prompt: string;
+  video_url: string | null;
+  voice_url: string | null;
+  workflow_id: number;
+}
+
+export interface Workflow {
+  created_at: string;
+  id: number;
+  segments: WorkflowSegment[];
+  title: string;
+  updated_at: string;
+}
+
 export interface ThreadsConnectionStatus {
   callbackUrl: string;
   configured: boolean;
