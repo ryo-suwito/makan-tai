@@ -292,7 +292,7 @@ async function buildFalImageRequest(
     };
   }
 
-  if (model === 'qwen-image-2-edit') {
+  if (model === 'qwen-image-2-edit' || model === 'qwen-image-2-pro-edit') {
     const settings = params.falImageSettings?.qwenImage2Edit;
     return {
       endpoint: config.editEndpoint!,
@@ -348,8 +348,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Qwen Image Edit 2511 Multiple Angles requires exactly one reference image.' }, { status: 400 });
     }
 
-    if (model === 'qwen-image-2-edit' && (inputImages.length < 1 || inputImages.length > 3)) {
-      return NextResponse.json({ error: 'Qwen Image 2 Edit requires between 1 and 3 reference images.' }, { status: 400 });
+    if (
+      (model === 'qwen-image-2-edit' || model === 'qwen-image-2-pro-edit')
+      && (inputImages.length < 1 || inputImages.length > 3)
+    ) {
+      return NextResponse.json({ error: 'Qwen Image 2 edit models require between 1 and 3 reference images.' }, { status: 400 });
     }
 
     if (isOpenAiImageModel(model)) {

@@ -13,8 +13,8 @@ Goal: add the requested Qwen Fal.ai edit models to the image UI one at a time, w
 - [x] Commit `fal-ai/qwen-image-edit-2511-multiple-angles`.
 - [x] Add `fal-ai/qwen-image-2/edit` with its prompt-expansion and edit constraints.
 - [x] Commit `fal-ai/qwen-image-2/edit`.
-- [ ] Add `fal-ai/qwen-image-2/pro/edit` with the same edit UI and distinct pricing/selection metadata.
-- [ ] Commit `fal-ai/qwen-image-2/pro/edit`.
+- [x] Add `fal-ai/qwen-image-2/pro/edit` with the same edit UI and distinct pricing/selection metadata.
+- [x] Commit `fal-ai/qwen-image-2/pro/edit`.
 - [ ] Add `fal-ai/qwen-image-edit-2511/lora`.
 - [ ] Add a LoRA registry/table with safetensors links and a simple picker widget for the LoRA endpoint.
 - [ ] Commit `fal-ai/qwen-image-edit-2511/lora` and the LoRA registry widget.

@@ -11,7 +11,8 @@ export type FalImageModelId =
   | 'qwen-image'
   | 'qwen-image-edit-2511'
   | 'qwen-image-edit-2511-multiple-angles'
-  | 'qwen-image-2-edit';
+  | 'qwen-image-2-edit'
+  | 'qwen-image-2-pro-edit';
 
 export type FalImageOutputFormat = 'png' | 'jpeg' | 'webp';
 export type FalImageAcceleration = 'none' | 'regular' | 'high';

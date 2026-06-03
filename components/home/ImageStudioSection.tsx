@@ -660,10 +660,10 @@ export function ImageStudioSection({
               </div>
             )}
 
-            {falImageModel.value === 'qwen-image-2-edit' && (
+            {(falImageModel.value === 'qwen-image-2-edit' || falImageModel.value === 'qwen-image-2-pro-edit') && (
               <div className="system-prompt-library mb-3">
                 <div className="system-prompt-library-header">
-                  <strong>Qwen Image 2 Edit Settings</strong>
+                  <strong>{falImageModel.label} Settings</strong>
                 </div>
                 <p className="text-sm text-gray-600 mb-3">
                   Requires 1 to 3 reference images. Their order matters, so keep them arranged to match any “image 1 / image 2 / image 3” prompt language.

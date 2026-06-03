@@ -771,10 +771,14 @@ export default function Home() {
       return;
     }
 
-    if (isFalModel && falImageModel.value === 'qwen-image-2-edit' && (inputImages.length < 1 || inputImages.length > 3)) {
+    if (
+      isFalModel
+      && (falImageModel.value === 'qwen-image-2-edit' || falImageModel.value === 'qwen-image-2-pro-edit')
+      && (inputImages.length < 1 || inputImages.length > 3)
+    ) {
       setAlertDialog({
         title: 'Reference image count mismatch',
-        message: 'Qwen Image 2 Edit requires 1 to 3 reference images, and their order matters for the prompt.',
+        message: `${falImageModel.label} requires 1 to 3 reference images, and their order matters for the prompt.`,
         confirmLabel: 'Okay',
       });
       return;

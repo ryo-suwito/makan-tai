@@ -134,6 +134,17 @@ const FAL_IMAGE_MODEL_CONFIG: Record<FalImageModelId, FalImageModelConfig> = {
     editEndpoint: 'fal-ai/qwen-image-2/edit',
     requiresReferenceImages: true,
   },
+  'qwen-image-2-pro-edit': {
+    value: 'qwen-image-2-pro-edit',
+    label: 'Qwen Image 2 Pro Edit',
+    unit: 'image',
+    price: '$0.075',
+    outputPerDollar: '13 images',
+    maxBatchSize: 4,
+    pricePerUnit: 0.075,
+    editEndpoint: 'fal-ai/qwen-image-2/pro/edit',
+    requiresReferenceImages: true,
+  },
 };
 
 export const FAL_IMAGE_MODEL_OPTIONS = Object.values(FAL_IMAGE_MODEL_CONFIG);
