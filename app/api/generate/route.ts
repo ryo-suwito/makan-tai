@@ -265,6 +265,33 @@ async function buildFalImageRequest(
     };
   }
 
+  if (model === 'qwen-image-edit-2511-multiple-angles') {
+    const settings = params.falImageSettings?.qwenImageEdit2511MultipleAngles;
+    return {
+      endpoint: config.editEndpoint!,
+      payload: {
+        image_urls: normalizedImages.slice(0, 1),
+        horizontal_angle: settings?.horizontalAngle ?? 0,
+        vertical_angle: settings?.verticalAngle ?? 0,
+        zoom: settings?.zoom ?? 5,
+        additional_prompt: params.prompt || undefined,
+        lora_scale: settings?.loraScale ?? 1,
+        image_size: {
+          width: params.width,
+          height: params.height,
+        },
+        guidance_scale: settings?.guidanceScale ?? 4.5,
+        num_inference_steps: settings?.numInferenceSteps ?? 28,
+        acceleration: settings?.acceleration ?? 'regular',
+        negative_prompt: settings?.negativePrompt || '',
+        enable_safety_checker: settings?.enableSafetyChecker ?? true,
+        output_format: settings?.outputFormat ?? 'png',
+        num_images: safeBatchSize,
+        ...(typeof settings?.seed === 'number' ? { seed: settings.seed } : {}),
+      },
+    };
+  }
+
   return {
     endpoint: normalizedImages.length > 0 ? config.editEndpoint! : config.textEndpoint,
     payload: {
@@ -286,9 +313,18 @@ export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as GenerateBody;
     const { prompt, width, height, batchSize, model, quality, inputImages = [], falImageSettings } = body;
+    const allowsEmptyPrompt = model === 'qwen-image-edit-2511-multiple-angles';
 
-    if (!prompt || !model) {
+    if ((!prompt && !allowsEmptyPrompt) || !model) {
       return NextResponse.json({ error: 'Missing prompt or model' }, { status: 400 });
+    }
+
+    if (model === 'qwen-image-edit-2511' && inputImages.length === 0) {
+      return NextResponse.json({ error: 'Qwen Image Edit 2511 requires at least one reference image.' }, { status: 400 });
+    }
+
+    if (model === 'qwen-image-edit-2511-multiple-angles' && inputImages.length !== 1) {
+      return NextResponse.json({ error: 'Qwen Image Edit 2511 Multiple Angles requires exactly one reference image.' }, { status: 400 });
     }
 
     if (isOpenAiImageModel(model)) {

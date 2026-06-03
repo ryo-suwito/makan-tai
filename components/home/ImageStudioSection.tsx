@@ -456,6 +456,209 @@ export function ImageStudioSection({
                 </div>
               </div>
             )}
+
+            {falImageModel.value === 'qwen-image-edit-2511-multiple-angles' && (
+              <div className="system-prompt-library mb-3">
+                <div className="system-prompt-library-header">
+                  <strong>Multiple Angles Settings</strong>
+                </div>
+                <p className="text-sm text-gray-600 mb-3">
+                  Uses one reference image and auto-builds the camera prompt. Your prompt fields are optional here and get appended as additional prompt text.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <label className="block mb-1">Horizontal Angle</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={360}
+                      step={1}
+                      value={falImageSettings.qwenImageEdit2511MultipleAngles.horizontalAngle}
+                      onChange={(event) => onFalImageSettingsChange({
+                        ...falImageSettings,
+                        qwenImageEdit2511MultipleAngles: {
+                          ...falImageSettings.qwenImageEdit2511MultipleAngles,
+                          horizontalAngle: Math.max(0, Math.min(360, Number(event.target.value) || 0)),
+                        },
+                      })}
+                      className="w-full p-2 border rounded"
+                    />
+                  </div>
+                  <div>
+                    <label className="block mb-1">Vertical Angle</label>
+                    <input
+                      type="number"
+                      min={-90}
+                      max={90}
+                      step={1}
+                      value={falImageSettings.qwenImageEdit2511MultipleAngles.verticalAngle}
+                      onChange={(event) => onFalImageSettingsChange({
+                        ...falImageSettings,
+                        qwenImageEdit2511MultipleAngles: {
+                          ...falImageSettings.qwenImageEdit2511MultipleAngles,
+                          verticalAngle: Math.max(-90, Math.min(90, Number(event.target.value) || 0)),
+                        },
+                      })}
+                      className="w-full p-2 border rounded"
+                    />
+                  </div>
+                  <div>
+                    <label className="block mb-1">Zoom</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={10}
+                      step={0.1}
+                      value={falImageSettings.qwenImageEdit2511MultipleAngles.zoom}
+                      onChange={(event) => onFalImageSettingsChange({
+                        ...falImageSettings,
+                        qwenImageEdit2511MultipleAngles: {
+                          ...falImageSettings.qwenImageEdit2511MultipleAngles,
+                          zoom: Math.max(0, Math.min(10, Number(event.target.value) || 0)),
+                        },
+                      })}
+                      className="w-full p-2 border rounded"
+                    />
+                  </div>
+                  <div>
+                    <label className="block mb-1">LoRA Scale</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={3}
+                      step={0.1}
+                      value={falImageSettings.qwenImageEdit2511MultipleAngles.loraScale}
+                      onChange={(event) => onFalImageSettingsChange({
+                        ...falImageSettings,
+                        qwenImageEdit2511MultipleAngles: {
+                          ...falImageSettings.qwenImageEdit2511MultipleAngles,
+                          loraScale: Math.max(0, Number(event.target.value) || 0),
+                        },
+                      })}
+                      className="w-full p-2 border rounded"
+                    />
+                  </div>
+                </div>
+                <label className="block mb-1">Negative Prompt</label>
+                <textarea
+                  value={falImageSettings.qwenImageEdit2511MultipleAngles.negativePrompt}
+                  onChange={(event) => onFalImageSettingsChange({
+                    ...falImageSettings,
+                    qwenImageEdit2511MultipleAngles: {
+                      ...falImageSettings.qwenImageEdit2511MultipleAngles,
+                      negativePrompt: event.target.value,
+                    },
+                  })}
+                  className="w-full p-2 border rounded mb-3"
+                  rows={2}
+                  placeholder="Optional things to avoid..."
+                />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <label className="block mb-1">Inference Steps</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={60}
+                      value={falImageSettings.qwenImageEdit2511MultipleAngles.numInferenceSteps}
+                      onChange={(event) => onFalImageSettingsChange({
+                        ...falImageSettings,
+                        qwenImageEdit2511MultipleAngles: {
+                          ...falImageSettings.qwenImageEdit2511MultipleAngles,
+                          numInferenceSteps: Math.max(1, Number(event.target.value) || 1),
+                        },
+                      })}
+                      className="w-full p-2 border rounded"
+                    />
+                  </div>
+                  <div>
+                    <label className="block mb-1">Guidance Scale</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={20}
+                      step={0.1}
+                      value={falImageSettings.qwenImageEdit2511MultipleAngles.guidanceScale}
+                      onChange={(event) => onFalImageSettingsChange({
+                        ...falImageSettings,
+                        qwenImageEdit2511MultipleAngles: {
+                          ...falImageSettings.qwenImageEdit2511MultipleAngles,
+                          guidanceScale: Math.max(0, Number(event.target.value) || 0),
+                        },
+                      })}
+                      className="w-full p-2 border rounded"
+                    />
+                  </div>
+                  <div>
+                    <label className="block mb-1">Acceleration</label>
+                    <select
+                      value={falImageSettings.qwenImageEdit2511MultipleAngles.acceleration}
+                      onChange={(event) => onFalImageSettingsChange({
+                        ...falImageSettings,
+                        qwenImageEdit2511MultipleAngles: {
+                          ...falImageSettings.qwenImageEdit2511MultipleAngles,
+                          acceleration: event.target.value as FalImageSettings['qwenImageEdit2511MultipleAngles']['acceleration'],
+                        },
+                      })}
+                      className="w-full p-2 border rounded"
+                    >
+                      <option value="none">None</option>
+                      <option value="regular">Regular</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block mb-1">Output Format</label>
+                    <select
+                      value={falImageSettings.qwenImageEdit2511MultipleAngles.outputFormat}
+                      onChange={(event) => onFalImageSettingsChange({
+                        ...falImageSettings,
+                        qwenImageEdit2511MultipleAngles: {
+                          ...falImageSettings.qwenImageEdit2511MultipleAngles,
+                          outputFormat: event.target.value as FalImageSettings['qwenImageEdit2511MultipleAngles']['outputFormat'],
+                        },
+                      })}
+                      className="w-full p-2 border rounded"
+                    >
+                      <option value="png">PNG</option>
+                      <option value="jpeg">JPEG</option>
+                      <option value="webp">WebP</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block mb-1">Seed</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={falImageSettings.qwenImageEdit2511MultipleAngles.seed ?? ''}
+                      onChange={(event) => onFalImageSettingsChange({
+                        ...falImageSettings,
+                        qwenImageEdit2511MultipleAngles: {
+                          ...falImageSettings.qwenImageEdit2511MultipleAngles,
+                          seed: event.target.value === '' ? null : Math.max(0, Math.floor(Number(event.target.value) || 0)),
+                        },
+                      })}
+                      className="w-full p-2 border rounded"
+                      placeholder="Optional"
+                    />
+                  </div>
+                  <label className="inline-flex items-center mt-7">
+                    <input
+                      type="checkbox"
+                      className="mr-2"
+                      checked={falImageSettings.qwenImageEdit2511MultipleAngles.enableSafetyChecker}
+                      onChange={(event) => onFalImageSettingsChange({
+                        ...falImageSettings,
+                        qwenImageEdit2511MultipleAngles: {
+                          ...falImageSettings.qwenImageEdit2511MultipleAngles,
+                          enableSafetyChecker: event.target.checked,
+                        },
+                      })}
+                    />
+                    Enable safety checker
+                  </label>
+                </div>
+              </div>
+            )}
           </>
         )}
 

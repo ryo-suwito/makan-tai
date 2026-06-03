@@ -43,6 +43,7 @@ import {
   DEFAULT_FAL_IMAGE_SETTINGS,
   FAL_IMAGE_MODEL_OPTIONS,
   falImageModelRequiresReferenceImages,
+  falImageModelRequiresPrompt,
   estimateFalImageTotalCost,
 } from '@/lib/fal-image-models';
 import {
@@ -140,6 +141,7 @@ export default function Home() {
   const [falImageModel, setFalImageModel] = useState<FalImageModelOption>(DEFAULT_FAL_IMAGE_MODEL);
   const [falImageSettings, setFalImageSettings] = useState<FalImageSettings>({
     qwenImageEdit2511: { ...DEFAULT_FAL_IMAGE_SETTINGS.qwenImageEdit2511 },
+    qwenImageEdit2511MultipleAngles: { ...DEFAULT_FAL_IMAGE_SETTINGS.qwenImageEdit2511MultipleAngles },
   });
   const [selfHostImageModel, setSelfHostImageModel] = useState(DEFAULT_SELF_HOST_IMAGE_MODEL);
   const [quality, setQuality] = useState<'low' | 'medium' | 'high'>('medium');
@@ -748,6 +750,7 @@ export default function Home() {
   const handleGenerate = async () => {
     const finalPrompt = composedImagePrompt.trim();
     const falRequiresReferenceImages = isFalModel && falImageModelRequiresReferenceImages(falImageModel.value);
+    const falRequiresPrompt = isFalModel ? falImageModelRequiresPrompt(falImageModel.value) : true;
 
     if (falRequiresReferenceImages && inputImages.length === 0) {
       setAlertDialog({
@@ -758,7 +761,16 @@ export default function Home() {
       return;
     }
 
-    if (!finalPrompt) {
+    if (isFalModel && falImageModel.value === 'qwen-image-edit-2511-multiple-angles' && inputImages.length !== 1) {
+      setAlertDialog({
+        title: 'Single reference image required',
+        message: 'Qwen Image Edit 2511 Multiple Angles uses one source image at a time. Keep exactly one reference selected before generating.',
+        confirmLabel: 'Okay',
+      });
+      return;
+    }
+
+    if (falRequiresPrompt && !finalPrompt) {
       setAlertDialog({
         title: 'Image prompt needed',
         message: 'Write a main prompt or use the prefix/suffix fields before generating an image.',

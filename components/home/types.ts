@@ -9,7 +9,8 @@ export type FalImageModelId =
   | 'flux-kontext-pro'
   | 'nano-banana'
   | 'qwen-image'
-  | 'qwen-image-edit-2511';
+  | 'qwen-image-edit-2511'
+  | 'qwen-image-edit-2511-multiple-angles';
 
 export type FalImageOutputFormat = 'png' | 'jpeg' | 'webp';
 export type FalImageAcceleration = 'none' | 'regular' | 'high';
@@ -32,8 +33,23 @@ export interface FalQwenImageEdit2511Settings {
   seed: number | null;
 }
 
+export interface FalQwenImageEdit2511MultipleAnglesSettings {
+  acceleration: Extract<FalImageAcceleration, 'none' | 'regular'>;
+  enableSafetyChecker: boolean;
+  guidanceScale: number;
+  horizontalAngle: number;
+  loraScale: number;
+  negativePrompt: string;
+  numInferenceSteps: number;
+  outputFormat: FalImageOutputFormat;
+  seed: number | null;
+  verticalAngle: number;
+  zoom: number;
+}
+
 export interface FalImageSettings {
   qwenImageEdit2511: FalQwenImageEdit2511Settings;
+  qwenImageEdit2511MultipleAngles: FalQwenImageEdit2511MultipleAnglesSettings;
 }
 
 export type SelfHostImageModelId = 'flux-schnell' | 'flux-dev';

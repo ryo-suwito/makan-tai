@@ -9,8 +9,8 @@ Goal: add the requested Qwen Fal.ai edit models to the image UI one at a time, w
 - [x] Add this tracker file.
 - [x] Add `fal-ai/qwen-image-edit-2511` and expose its edit-only settings in the image UI.
 - [x] Commit `fal-ai/qwen-image-edit-2511`.
-- [ ] Add `fal-ai/qwen-image-edit-2511-multiple-angles` with angle and camera controls.
-- [ ] Commit `fal-ai/qwen-image-edit-2511-multiple-angles`.
+- [x] Add `fal-ai/qwen-image-edit-2511-multiple-angles` with angle and camera controls.
+- [x] Commit `fal-ai/qwen-image-edit-2511-multiple-angles`.
 - [ ] Add `fal-ai/qwen-image-2/edit` with its prompt-expansion and edit constraints.
 - [ ] Commit `fal-ai/qwen-image-2/edit`.
 - [ ] Add `fal-ai/qwen-image-2/pro/edit` with the same edit UI and distinct pricing/selection metadata.

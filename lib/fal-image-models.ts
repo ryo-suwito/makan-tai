@@ -3,6 +3,7 @@ import type {
   FalImageModelOption,
   FalImageSettings,
   FalQwenImageEdit2511Settings,
+  FalQwenImageEdit2511MultipleAnglesSettings,
 } from '@/components/home/types';
 
 const FAL_IMAGE_ASPECT_RATIOS = ['21:9', '16:9', '4:3', '3:2', '1:1', '2:3', '3:4', '9:16', '9:21'] as const;
@@ -26,8 +27,23 @@ export const DEFAULT_FAL_QWEN_IMAGE_EDIT_2511_SETTINGS: FalQwenImageEdit2511Sett
   seed: null,
 };
 
+export const DEFAULT_FAL_QWEN_IMAGE_EDIT_2511_MULTIPLE_ANGLES_SETTINGS: FalQwenImageEdit2511MultipleAnglesSettings = {
+  horizontalAngle: 0,
+  verticalAngle: 0,
+  zoom: 5,
+  loraScale: 1,
+  negativePrompt: '',
+  numInferenceSteps: 28,
+  guidanceScale: 4.5,
+  acceleration: 'regular',
+  enableSafetyChecker: true,
+  outputFormat: 'png',
+  seed: null,
+};
+
 export const DEFAULT_FAL_IMAGE_SETTINGS: FalImageSettings = {
   qwenImageEdit2511: DEFAULT_FAL_QWEN_IMAGE_EDIT_2511_SETTINGS,
+  qwenImageEdit2511MultipleAngles: DEFAULT_FAL_QWEN_IMAGE_EDIT_2511_MULTIPLE_ANGLES_SETTINGS,
 };
 
 const FAL_IMAGE_MODEL_CONFIG: Record<FalImageModelId, FalImageModelConfig> = {
@@ -86,6 +102,17 @@ const FAL_IMAGE_MODEL_CONFIG: Record<FalImageModelId, FalImageModelConfig> = {
     editEndpoint: 'fal-ai/qwen-image-edit-2511',
     requiresReferenceImages: true,
   },
+  'qwen-image-edit-2511-multiple-angles': {
+    value: 'qwen-image-edit-2511-multiple-angles',
+    label: 'Qwen Image Edit 2511 Multiple Angles',
+    unit: 'megapixel',
+    price: '$0.035',
+    outputPerDollar: '28 megapixels',
+    maxBatchSize: 4,
+    pricePerUnit: 0.035,
+    editEndpoint: 'fal-ai/qwen-image-edit-2511-multiple-angles',
+    requiresReferenceImages: true,
+  },
 };
 
 export const FAL_IMAGE_MODEL_OPTIONS = Object.values(FAL_IMAGE_MODEL_CONFIG);
@@ -106,6 +133,10 @@ export function clampFalImageBatchSize(model: FalImageModelId, batchSize: number
 
 export function falImageModelRequiresReferenceImages(model: FalImageModelId) {
   return Boolean(getFalImageModelConfig(model).requiresReferenceImages);
+}
+
+export function falImageModelRequiresPrompt(model: FalImageModelId) {
+  return model !== 'qwen-image-edit-2511-multiple-angles';
 }
 
 export function estimateFalImageTotalCost(model: FalImageModelId, width: number, height: number, batchSize: number) {
