@@ -265,6 +265,34 @@ async function buildFalImageRequest(
     };
   }
 
+  if (model === 'qwen-image-edit-2511-lora') {
+    const settings = params.falImageSettings?.qwenImageEdit2511;
+    const loras = (params.falImageSettings?.qwenImageEdit2511Loras || []).slice(0, 3);
+    return {
+      endpoint: config.editEndpoint!,
+      payload: {
+        prompt: params.prompt,
+        negative_prompt: settings?.negativePrompt || '',
+        image_size: {
+          width: params.width,
+          height: params.height,
+        },
+        image_urls: normalizedImages,
+        num_inference_steps: settings?.numInferenceSteps ?? 28,
+        guidance_scale: settings?.guidanceScale ?? 4.5,
+        num_images: safeBatchSize,
+        enable_safety_checker: settings?.enableSafetyChecker ?? true,
+        output_format: settings?.outputFormat ?? 'png',
+        acceleration: settings?.acceleration ?? 'regular',
+        loras: loras.map((item) => ({
+          path: item.path,
+          scale: item.scale,
+        })),
+        ...(typeof settings?.seed === 'number' ? { seed: settings.seed } : {}),
+      },
+    };
+  }
+
   if (model === 'qwen-image-edit-2511-multiple-angles') {
     const settings = params.falImageSettings?.qwenImageEdit2511MultipleAngles;
     return {
@@ -342,6 +370,18 @@ export async function POST(req: NextRequest) {
 
     if (model === 'qwen-image-edit-2511' && inputImages.length === 0) {
       return NextResponse.json({ error: 'Qwen Image Edit 2511 requires at least one reference image.' }, { status: 400 });
+    }
+
+    if (model === 'qwen-image-edit-2511-lora' && inputImages.length === 0) {
+      return NextResponse.json({ error: 'Qwen Image Edit 2511 LoRA requires at least one reference image.' }, { status: 400 });
+    }
+
+    if (model === 'qwen-image-edit-2511-lora' && (falImageSettings?.qwenImageEdit2511Loras.length || 0) === 0) {
+      return NextResponse.json({ error: 'Qwen Image Edit 2511 LoRA requires at least one selected LoRA.' }, { status: 400 });
+    }
+
+    if (model === 'qwen-image-edit-2511-lora' && (falImageSettings?.qwenImageEdit2511Loras.length || 0) > 3) {
+      return NextResponse.json({ error: 'Qwen Image Edit 2511 LoRA accepts at most 3 LoRAs.' }, { status: 400 });
     }
 
     if (model === 'qwen-image-edit-2511-multiple-angles' && inputImages.length !== 1) {

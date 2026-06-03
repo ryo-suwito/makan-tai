@@ -143,6 +143,7 @@ export default function Home() {
     qwenImageEdit2511: { ...DEFAULT_FAL_IMAGE_SETTINGS.qwenImageEdit2511 },
     qwenImageEdit2511MultipleAngles: { ...DEFAULT_FAL_IMAGE_SETTINGS.qwenImageEdit2511MultipleAngles },
     qwenImage2Edit: { ...DEFAULT_FAL_IMAGE_SETTINGS.qwenImage2Edit },
+    qwenImageEdit2511Loras: [],
   });
   const [selfHostImageModel, setSelfHostImageModel] = useState(DEFAULT_SELF_HOST_IMAGE_MODEL);
   const [quality, setQuality] = useState<'low' | 'medium' | 'high'>('medium');
@@ -779,6 +780,24 @@ export default function Home() {
       setAlertDialog({
         title: 'Reference image count mismatch',
         message: `${falImageModel.label} requires 1 to 3 reference images, and their order matters for the prompt.`,
+        confirmLabel: 'Okay',
+      });
+      return;
+    }
+
+    if (isFalModel && falImageModel.value === 'qwen-image-edit-2511-lora' && falImageSettings.qwenImageEdit2511Loras.length === 0) {
+      setAlertDialog({
+        title: 'LoRA selection needed',
+        message: 'Qwen Image Edit 2511 LoRA requires at least one selected LoRA from the registry widget.',
+        confirmLabel: 'Okay',
+      });
+      return;
+    }
+
+    if (isFalModel && falImageModel.value === 'qwen-image-edit-2511-lora' && falImageSettings.qwenImageEdit2511Loras.length > 3) {
+      setAlertDialog({
+        title: 'Too many LoRAs selected',
+        message: 'Qwen Image Edit 2511 LoRA accepts up to 3 LoRAs per request.',
         confirmLabel: 'Okay',
       });
       return;

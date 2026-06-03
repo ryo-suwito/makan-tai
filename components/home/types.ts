@@ -12,7 +12,8 @@ export type FalImageModelId =
   | 'qwen-image-edit-2511'
   | 'qwen-image-edit-2511-multiple-angles'
   | 'qwen-image-2-edit'
-  | 'qwen-image-2-pro-edit';
+  | 'qwen-image-2-pro-edit'
+  | 'qwen-image-edit-2511-lora';
 
 export type FalImageOutputFormat = 'png' | 'jpeg' | 'webp';
 export type FalImageAcceleration = 'none' | 'regular' | 'high';
@@ -23,6 +24,20 @@ export interface FalImageModelOption {
   price: string;
   unit: 'image' | 'megapixel';
   value: FalImageModelId;
+}
+
+export interface FalImageLoraOption {
+  defaultScale: number;
+  description: string;
+  id: string;
+  label: string;
+  path: string;
+  repoUrl: string;
+  safetensorsUrl: string;
+}
+
+export interface FalImageLoraSelection extends FalImageLoraOption {
+  scale: number;
 }
 
 export interface FalQwenImageEdit2511Settings {
@@ -61,6 +76,7 @@ export interface FalImageSettings {
   qwenImageEdit2511: FalQwenImageEdit2511Settings;
   qwenImageEdit2511MultipleAngles: FalQwenImageEdit2511MultipleAnglesSettings;
   qwenImage2Edit: FalQwenImage2EditSettings;
+  qwenImageEdit2511Loras: FalImageLoraSelection[];
 }
 
 export type SelfHostImageModelId = 'flux-schnell' | 'flux-dev';

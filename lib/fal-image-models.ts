@@ -54,6 +54,7 @@ export const DEFAULT_FAL_IMAGE_SETTINGS: FalImageSettings = {
   qwenImageEdit2511: DEFAULT_FAL_QWEN_IMAGE_EDIT_2511_SETTINGS,
   qwenImageEdit2511MultipleAngles: DEFAULT_FAL_QWEN_IMAGE_EDIT_2511_MULTIPLE_ANGLES_SETTINGS,
   qwenImage2Edit: DEFAULT_FAL_QWEN_IMAGE_2_EDIT_SETTINGS,
+  qwenImageEdit2511Loras: [],
 };
 
 const FAL_IMAGE_MODEL_CONFIG: Record<FalImageModelId, FalImageModelConfig> = {
@@ -143,6 +144,17 @@ const FAL_IMAGE_MODEL_CONFIG: Record<FalImageModelId, FalImageModelConfig> = {
     maxBatchSize: 4,
     pricePerUnit: 0.075,
     editEndpoint: 'fal-ai/qwen-image-2/pro/edit',
+    requiresReferenceImages: true,
+  },
+  'qwen-image-edit-2511-lora': {
+    value: 'qwen-image-edit-2511-lora',
+    label: 'Qwen Image Edit 2511 LoRA',
+    unit: 'megapixel',
+    price: '$0.035',
+    outputPerDollar: '28 megapixels',
+    maxBatchSize: 4,
+    pricePerUnit: 0.035,
+    editEndpoint: 'fal-ai/qwen-image-edit-2511/lora',
     requiresReferenceImages: true,
   },
 };

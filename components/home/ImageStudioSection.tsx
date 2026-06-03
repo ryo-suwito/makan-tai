@@ -9,7 +9,9 @@ import {
   type GeminiAspectRatio,
   type ImageGenerationModel,
 } from '@/lib/image-models';
+import { FAL_IMAGE_LORA_OPTIONS } from '@/lib/fal-image-loras';
 import type {
+  FalImageLoraOption,
   FalImageSettings,
   FalImageModelOption,
   SavedPrompt,
@@ -208,6 +210,45 @@ export function ImageStudioSection({
     }
   };
 
+  const addFalLora = (option: FalImageLoraOption) => {
+    if (falImageSettings.qwenImageEdit2511Loras.some((item) => item.id === option.id)) {
+      return;
+    }
+
+    if (falImageSettings.qwenImageEdit2511Loras.length >= 3) {
+      return;
+    }
+
+    onFalImageSettingsChange({
+      ...falImageSettings,
+      qwenImageEdit2511Loras: [
+        ...falImageSettings.qwenImageEdit2511Loras,
+        {
+          ...option,
+          scale: option.defaultScale,
+        },
+      ],
+    });
+  };
+
+  const removeFalLora = (id: string) => {
+    onFalImageSettingsChange({
+      ...falImageSettings,
+      qwenImageEdit2511Loras: falImageSettings.qwenImageEdit2511Loras.filter((item) => item.id !== id),
+    });
+  };
+
+  const updateFalLoraScale = (id: string, scale: number) => {
+    onFalImageSettingsChange({
+      ...falImageSettings,
+      qwenImageEdit2511Loras: falImageSettings.qwenImageEdit2511Loras.map((item) => (
+        item.id === id
+          ? { ...item, scale }
+          : item
+      )),
+    });
+  };
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div>
@@ -327,10 +368,10 @@ export function ImageStudioSection({
               Fixed Fal.ai model list with current billing metadata. No favorites are stored for image models.
             </p>
 
-            {falImageModel.value === 'qwen-image-edit-2511' && (
+            {(falImageModel.value === 'qwen-image-edit-2511' || falImageModel.value === 'qwen-image-edit-2511-lora') && (
               <div className="system-prompt-library mb-3">
                 <div className="system-prompt-library-header">
-                  <strong>Qwen Image Edit 2511 Settings</strong>
+                  <strong>{falImageModel.label} Settings</strong>
                 </div>
                 <p className="text-sm text-gray-600 mb-3">
                   Edit-only model. Requires at least one reference image and exposes Qwen 2511-specific inference controls.
@@ -454,6 +495,81 @@ export function ImageStudioSection({
                     Enable safety checker
                   </label>
                 </div>
+
+                {falImageModel.value === 'qwen-image-edit-2511-lora' && (
+                  <div className="mt-4">
+                    <div className="system-prompt-library-header mb-2">
+                      <strong>LoRA Registry</strong>
+                      <span className="system-prompt-count">{falImageSettings.qwenImageEdit2511Loras.length}/3 selected</span>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-3">
+                      Pick up to 3 LoRAs. The safetensors link is the exact path sent to Fal for the selected rows.
+                    </p>
+                    <div className="system-prompt-list mb-3">
+                      {FAL_IMAGE_LORA_OPTIONS.map((option) => {
+                        const selected = falImageSettings.qwenImageEdit2511Loras.some((item) => item.id === option.id);
+                        const atCapacity = falImageSettings.qwenImageEdit2511Loras.length >= 3 && !selected;
+                        return (
+                          <div key={option.id} className="system-prompt-card">
+                            <div className="system-prompt-card-header">
+                              <strong>{option.label}</strong>
+                              <span className="audio-date">Default scale {option.defaultScale}</span>
+                            </div>
+                            <p className="system-prompt-preview">{option.description}</p>
+                            <div className="flex flex-wrap gap-2 text-sm mb-2">
+                              <a href={option.repoUrl} target="_blank" rel="noreferrer" className="text-blue-600 underline">
+                                Repo
+                              </a>
+                              <a href={option.safetensorsUrl} target="_blank" rel="noreferrer" className="text-blue-600 underline">
+                                Safetensors
+                              </a>
+                            </div>
+                            <div className="system-prompt-actions">
+                              {selected ? (
+                                <button type="button" className="system-prompt-delete" onClick={() => removeFalLora(option.id)}>
+                                  Remove
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="gemini-secondary-button"
+                                  onClick={() => addFalLora(option)}
+                                  disabled={atCapacity}
+                                >
+                                  {atCapacity ? 'Max 3 selected' : 'Add LoRA'}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {falImageSettings.qwenImageEdit2511Loras.length > 0 && (
+                      <div className="system-prompt-list">
+                        {falImageSettings.qwenImageEdit2511Loras.map((item) => (
+                          <div key={item.id} className="system-prompt-card">
+                            <div className="system-prompt-card-header">
+                              <strong>{item.label}</strong>
+                              <span className="audio-date">Selected</span>
+                            </div>
+                            <label className="block mb-1">Scale</label>
+                            <input
+                              type="number"
+                              min={0}
+                              max={3}
+                              step={0.1}
+                              value={item.scale}
+                              onChange={(event) => updateFalLoraScale(item.id, Math.max(0, Number(event.target.value) || 0))}
+                              className="w-full p-2 border rounded mb-2"
+                            />
+                            <p className="reference-file-meta break-all">{item.path}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
