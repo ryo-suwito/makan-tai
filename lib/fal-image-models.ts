@@ -2,6 +2,7 @@ import type {
   FalImageModelId,
   FalImageModelOption,
   FalImageSettings,
+  FalQwenImage2EditSettings,
   FalQwenImageEdit2511Settings,
   FalQwenImageEdit2511MultipleAnglesSettings,
 } from '@/components/home/types';
@@ -41,9 +42,18 @@ export const DEFAULT_FAL_QWEN_IMAGE_EDIT_2511_MULTIPLE_ANGLES_SETTINGS: FalQwenI
   seed: null,
 };
 
+export const DEFAULT_FAL_QWEN_IMAGE_2_EDIT_SETTINGS: FalQwenImage2EditSettings = {
+  negativePrompt: '',
+  enablePromptExpansion: true,
+  enableSafetyChecker: true,
+  outputFormat: 'png',
+  seed: null,
+};
+
 export const DEFAULT_FAL_IMAGE_SETTINGS: FalImageSettings = {
   qwenImageEdit2511: DEFAULT_FAL_QWEN_IMAGE_EDIT_2511_SETTINGS,
   qwenImageEdit2511MultipleAngles: DEFAULT_FAL_QWEN_IMAGE_EDIT_2511_MULTIPLE_ANGLES_SETTINGS,
+  qwenImage2Edit: DEFAULT_FAL_QWEN_IMAGE_2_EDIT_SETTINGS,
 };
 
 const FAL_IMAGE_MODEL_CONFIG: Record<FalImageModelId, FalImageModelConfig> = {
@@ -111,6 +121,17 @@ const FAL_IMAGE_MODEL_CONFIG: Record<FalImageModelId, FalImageModelConfig> = {
     maxBatchSize: 4,
     pricePerUnit: 0.035,
     editEndpoint: 'fal-ai/qwen-image-edit-2511-multiple-angles',
+    requiresReferenceImages: true,
+  },
+  'qwen-image-2-edit': {
+    value: 'qwen-image-2-edit',
+    label: 'Qwen Image 2 Edit',
+    unit: 'image',
+    price: '$0.035',
+    outputPerDollar: '28 images',
+    maxBatchSize: 4,
+    pricePerUnit: 0.035,
+    editEndpoint: 'fal-ai/qwen-image-2/edit',
     requiresReferenceImages: true,
   },
 };

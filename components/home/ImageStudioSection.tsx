@@ -659,6 +659,99 @@ export function ImageStudioSection({
                 </div>
               </div>
             )}
+
+            {falImageModel.value === 'qwen-image-2-edit' && (
+              <div className="system-prompt-library mb-3">
+                <div className="system-prompt-library-header">
+                  <strong>Qwen Image 2 Edit Settings</strong>
+                </div>
+                <p className="text-sm text-gray-600 mb-3">
+                  Requires 1 to 3 reference images. Their order matters, so keep them arranged to match any “image 1 / image 2 / image 3” prompt language.
+                </p>
+                <label className="block mb-1">Negative Prompt</label>
+                <textarea
+                  value={falImageSettings.qwenImage2Edit.negativePrompt}
+                  onChange={(event) => onFalImageSettingsChange({
+                    ...falImageSettings,
+                    qwenImage2Edit: {
+                      ...falImageSettings.qwenImage2Edit,
+                      negativePrompt: event.target.value,
+                    },
+                  })}
+                  className="w-full p-2 border rounded mb-3"
+                  rows={2}
+                  placeholder="Optional things to avoid..."
+                />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <label className="block mb-1">Output Format</label>
+                    <select
+                      value={falImageSettings.qwenImage2Edit.outputFormat}
+                      onChange={(event) => onFalImageSettingsChange({
+                        ...falImageSettings,
+                        qwenImage2Edit: {
+                          ...falImageSettings.qwenImage2Edit,
+                          outputFormat: event.target.value as FalImageSettings['qwenImage2Edit']['outputFormat'],
+                        },
+                      })}
+                      className="w-full p-2 border rounded"
+                    >
+                      <option value="png">PNG</option>
+                      <option value="jpeg">JPEG</option>
+                      <option value="webp">WebP</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block mb-1">Seed</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={2147483647}
+                      value={falImageSettings.qwenImage2Edit.seed ?? ''}
+                      onChange={(event) => onFalImageSettingsChange({
+                        ...falImageSettings,
+                        qwenImage2Edit: {
+                          ...falImageSettings.qwenImage2Edit,
+                          seed: event.target.value === '' ? null : Math.max(0, Math.floor(Number(event.target.value) || 0)),
+                        },
+                      })}
+                      className="w-full p-2 border rounded"
+                      placeholder="Optional"
+                    />
+                  </div>
+                  <label className="inline-flex items-center">
+                    <input
+                      type="checkbox"
+                      className="mr-2"
+                      checked={falImageSettings.qwenImage2Edit.enablePromptExpansion}
+                      onChange={(event) => onFalImageSettingsChange({
+                        ...falImageSettings,
+                        qwenImage2Edit: {
+                          ...falImageSettings.qwenImage2Edit,
+                          enablePromptExpansion: event.target.checked,
+                        },
+                      })}
+                    />
+                    Enable prompt expansion
+                  </label>
+                  <label className="inline-flex items-center">
+                    <input
+                      type="checkbox"
+                      className="mr-2"
+                      checked={falImageSettings.qwenImage2Edit.enableSafetyChecker}
+                      onChange={(event) => onFalImageSettingsChange({
+                        ...falImageSettings,
+                        qwenImage2Edit: {
+                          ...falImageSettings.qwenImage2Edit,
+                          enableSafetyChecker: event.target.checked,
+                        },
+                      })}
+                    />
+                    Enable safety checker
+                  </label>
+                </div>
+              </div>
+            )}
           </>
         )}
 

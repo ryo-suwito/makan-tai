@@ -292,6 +292,27 @@ async function buildFalImageRequest(
     };
   }
 
+  if (model === 'qwen-image-2-edit') {
+    const settings = params.falImageSettings?.qwenImage2Edit;
+    return {
+      endpoint: config.editEndpoint!,
+      payload: {
+        prompt: params.prompt,
+        negative_prompt: settings?.negativePrompt || '',
+        image_size: {
+          width: params.width,
+          height: params.height,
+        },
+        enable_prompt_expansion: settings?.enablePromptExpansion ?? true,
+        enable_safety_checker: settings?.enableSafetyChecker ?? true,
+        num_images: safeBatchSize,
+        output_format: settings?.outputFormat ?? 'png',
+        image_urls: normalizedImages.slice(0, 3),
+        ...(typeof settings?.seed === 'number' ? { seed: settings.seed } : {}),
+      },
+    };
+  }
+
   return {
     endpoint: normalizedImages.length > 0 ? config.editEndpoint! : config.textEndpoint,
     payload: {
@@ -325,6 +346,10 @@ export async function POST(req: NextRequest) {
 
     if (model === 'qwen-image-edit-2511-multiple-angles' && inputImages.length !== 1) {
       return NextResponse.json({ error: 'Qwen Image Edit 2511 Multiple Angles requires exactly one reference image.' }, { status: 400 });
+    }
+
+    if (model === 'qwen-image-2-edit' && (inputImages.length < 1 || inputImages.length > 3)) {
+      return NextResponse.json({ error: 'Qwen Image 2 Edit requires between 1 and 3 reference images.' }, { status: 400 });
     }
 
     if (isOpenAiImageModel(model)) {

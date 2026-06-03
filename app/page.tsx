@@ -142,6 +142,7 @@ export default function Home() {
   const [falImageSettings, setFalImageSettings] = useState<FalImageSettings>({
     qwenImageEdit2511: { ...DEFAULT_FAL_IMAGE_SETTINGS.qwenImageEdit2511 },
     qwenImageEdit2511MultipleAngles: { ...DEFAULT_FAL_IMAGE_SETTINGS.qwenImageEdit2511MultipleAngles },
+    qwenImage2Edit: { ...DEFAULT_FAL_IMAGE_SETTINGS.qwenImage2Edit },
   });
   const [selfHostImageModel, setSelfHostImageModel] = useState(DEFAULT_SELF_HOST_IMAGE_MODEL);
   const [quality, setQuality] = useState<'low' | 'medium' | 'high'>('medium');
@@ -765,6 +766,15 @@ export default function Home() {
       setAlertDialog({
         title: 'Single reference image required',
         message: 'Qwen Image Edit 2511 Multiple Angles uses one source image at a time. Keep exactly one reference selected before generating.',
+        confirmLabel: 'Okay',
+      });
+      return;
+    }
+
+    if (isFalModel && falImageModel.value === 'qwen-image-2-edit' && (inputImages.length < 1 || inputImages.length > 3)) {
+      setAlertDialog({
+        title: 'Reference image count mismatch',
+        message: 'Qwen Image 2 Edit requires 1 to 3 reference images, and their order matters for the prompt.',
         confirmLabel: 'Okay',
       });
       return;

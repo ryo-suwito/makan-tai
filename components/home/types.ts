@@ -10,7 +10,8 @@ export type FalImageModelId =
   | 'nano-banana'
   | 'qwen-image'
   | 'qwen-image-edit-2511'
-  | 'qwen-image-edit-2511-multiple-angles';
+  | 'qwen-image-edit-2511-multiple-angles'
+  | 'qwen-image-2-edit';
 
 export type FalImageOutputFormat = 'png' | 'jpeg' | 'webp';
 export type FalImageAcceleration = 'none' | 'regular' | 'high';
@@ -47,9 +48,18 @@ export interface FalQwenImageEdit2511MultipleAnglesSettings {
   zoom: number;
 }
 
+export interface FalQwenImage2EditSettings {
+  enablePromptExpansion: boolean;
+  enableSafetyChecker: boolean;
+  negativePrompt: string;
+  outputFormat: FalImageOutputFormat;
+  seed: number | null;
+}
+
 export interface FalImageSettings {
   qwenImageEdit2511: FalQwenImageEdit2511Settings;
   qwenImageEdit2511MultipleAngles: FalQwenImageEdit2511MultipleAnglesSettings;
+  qwenImage2Edit: FalQwenImage2EditSettings;
 }
 
 export type SelfHostImageModelId = 'flux-schnell' | 'flux-dev';
