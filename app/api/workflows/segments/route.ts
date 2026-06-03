@@ -15,10 +15,13 @@ export async function PATCH(req: NextRequest) {
     }
 
     const segment = updateWorkflowSegment(id, {
+      assembled_url: body.assembled_url,
       image_prompt: body.image_prompt,
       image_url: body.image_url,
+      srt: body.srt,
       status: body.status,
       text: body.text,
+      video_no_sound: body.video_no_sound,
       video_prompt: body.video_prompt,
       video_url: body.video_url,
       voice_url: body.voice_url,

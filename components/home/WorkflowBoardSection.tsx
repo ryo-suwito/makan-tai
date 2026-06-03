@@ -20,13 +20,21 @@ interface WorkflowBoardSectionProps {
   workflows: Workflow[];
   onError: (title: string, err: unknown) => void;
   onGenerateImage: (segment: WorkflowSegment) => Promise<string>;
+  onGenerateVideo: (segment: WorkflowSegment) => Promise<string>;
   onReload: () => Promise<void>;
 }
 
 interface SegmentDraftState {
   image_prompt: string;
+  srt: string | null;
   text: string;
+  video_no_sound: boolean;
   video_prompt: string;
+}
+
+interface GeneratedWorkflowVoice {
+  srt: string | null;
+  voiceUrl: string;
 }
 
 interface NukeDialogState {
@@ -41,12 +49,19 @@ export function WorkflowBoardSection({
   workflows,
   onError,
   onGenerateImage,
+  onGenerateVideo,
   onReload,
 }: WorkflowBoardSectionProps) {
   const [busySegmentId, setBusySegmentId] = useState<number | null>(null);
   const [busyWorkflowId, setBusyWorkflowId] = useState<number | null>(null);
   const [editingSegment, setEditingSegment] = useState<WorkflowSegment | null>(null);
-  const [draft, setDraft] = useState<SegmentDraftState>({ text: '', image_prompt: '', video_prompt: '' });
+  const [draft, setDraft] = useState<SegmentDraftState>({
+    text: '',
+    image_prompt: '',
+    srt: null,
+    video_no_sound: false,
+    video_prompt: '',
+  });
   const [nukeDialog, setNukeDialog] = useState<NukeDialogState | null>(null);
 
   useEffect(() => {
@@ -83,6 +98,8 @@ export function WorkflowBoardSection({
     setDraft({
       text: segment.text,
       image_prompt: segment.image_prompt,
+      srt: segment.srt,
+      video_no_sound: segment.video_no_sound,
       video_prompt: segment.video_prompt,
     });
   };
@@ -116,7 +133,7 @@ export function WorkflowBoardSection({
     });
   };
 
-  const generateVoice = async (segment: WorkflowSegment) => {
+  const generateVoice = async (segment: WorkflowSegment): Promise<GeneratedWorkflowVoice> => {
     if (!selectedVoice) {
       throw new Error('Choose a Cartesia voice before generating workflow voice.');
     }
@@ -136,12 +153,36 @@ export function WorkflowBoardSection({
       throw new Error(typeof data.error === 'string' ? data.error : 'Failed to generate workflow voice.');
     }
 
+    return {
+      voiceUrl: toRelativeAssetUrl(data.data.url),
+      srt: typeof data.data?.srt === 'string' ? data.data.srt : null,
+    };
+  };
+
+  const assembleSegment = async (segment: WorkflowSegment) => {
+    const response = await fetch('/api/workflows/assemble', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        segmentId: segment.id,
+        videoUrl: segment.video_url,
+        videoNoSound: segment.video_no_sound,
+        voiceUrl: segment.voice_url,
+        srt: segment.srt,
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok || typeof data.data?.url !== 'string') {
+      throw new Error(typeof data.error === 'string' ? data.error : 'Failed to assemble workflow segment.');
+    }
+
     return toRelativeAssetUrl(data.data.url);
   };
 
   const replaceSegmentAsset = async (
     segment: WorkflowSegment,
-    assetKey: 'image_url' | 'voice_url',
+    assetKey: 'image_url',
     generate: () => Promise<string>,
   ) => {
     setBusySegmentId(segment.id);
@@ -160,18 +201,128 @@ export function WorkflowBoardSection({
     }
   };
 
+  const replaceSegmentVoice = async (segment: WorkflowSegment) => {
+    setBusySegmentId(segment.id);
+
+    try {
+      const oldUrl = segment.voice_url;
+      const generated = await generateVoice(segment);
+      const nextSegment: WorkflowSegment = {
+        ...segment,
+        voice_url: generated.voiceUrl,
+        srt: generated.srt,
+        assembled_url: null,
+      };
+      let assembledUrl: string | null = null;
+
+      if (segment.status === 'done' && nextSegment.video_url && nextSegment.srt) {
+        assembledUrl = await assembleSegment(nextSegment);
+      }
+
+      const updatedSegment = await updateSegment(segment.id, {
+        voice_url: generated.voiceUrl,
+        srt: generated.srt,
+        assembled_url: assembledUrl,
+      });
+      setEditingSegment((current) => (current?.id === segment.id ? updatedSegment : current));
+      await deleteAsset(oldUrl);
+      await onReload();
+    } catch (err) {
+      onError('Workflow regenerate failed', err);
+    } finally {
+      setBusySegmentId(null);
+    }
+  };
+
+  const replaceSegmentVideo = async (segment: WorkflowSegment) => {
+    setBusySegmentId(segment.id);
+
+    try {
+      const oldUrl = segment.video_url;
+      const nextVideoUrl = toRelativeAssetUrl(await onGenerateVideo(segment));
+      const nextSegment: WorkflowSegment = {
+        ...segment,
+        video_url: nextVideoUrl,
+        assembled_url: null,
+      };
+      let assembledUrl: string | null = null;
+
+      if (segment.status === 'done' && nextSegment.voice_url && nextSegment.srt) {
+        assembledUrl = await assembleSegment(nextSegment);
+      }
+
+      const updatedSegment = await updateSegment(segment.id, {
+        video_url: nextVideoUrl,
+        assembled_url: assembledUrl,
+      });
+      setEditingSegment((current) => (current?.id === segment.id ? updatedSegment : current));
+      await deleteAsset(oldUrl);
+      await onReload();
+    } catch (err) {
+      onError('Workflow regenerate failed', err);
+    } finally {
+      setBusySegmentId(null);
+    }
+  };
+
+  const replaceSegmentAssembled = async (segment: WorkflowSegment) => {
+    setBusySegmentId(segment.id);
+
+    try {
+      if (!segment.video_url || !segment.voice_url || !segment.srt) {
+        throw new Error('Re-assemble requires a video clip, voice clip, and SRT captions.');
+      }
+
+      const oldUrl = segment.assembled_url;
+      const assembledUrl = await assembleSegment(segment);
+      const updatedSegment = await updateSegment(segment.id, {
+        assembled_url: assembledUrl,
+      });
+      setEditingSegment((current) => (current?.id === segment.id ? updatedSegment : current));
+      await deleteAsset(oldUrl);
+      await onReload();
+    } catch (err) {
+      onError('Workflow re-assemble failed', err);
+    } finally {
+      setBusySegmentId(null);
+    }
+  };
+
   const moveSegment = async (segment: WorkflowSegment, status: WorkflowSegmentStatus) => {
     setBusySegmentId(segment.id);
 
     try {
       const updates: Partial<WorkflowSegment> = { status };
+      const workingSegment: WorkflowSegment = { ...segment };
 
-      if (status === 'voice' && !segment.voice_url) {
-        updates.voice_url = await generateVoice(segment);
+      if ((status === 'voice' || status === 'done') && (!workingSegment.voice_url || !workingSegment.srt)) {
+        const generated = await generateVoice(workingSegment);
+        updates.voice_url = generated.voiceUrl;
+        updates.srt = generated.srt;
+        updates.assembled_url = null;
+        workingSegment.voice_url = generated.voiceUrl;
+        workingSegment.srt = generated.srt;
+        workingSegment.assembled_url = null;
       }
 
-      if (status === 'image' && !segment.image_url) {
-        updates.image_url = toRelativeAssetUrl(await onGenerateImage(segment));
+      if ((status === 'image' || (status === 'done' && !workingSegment.video_url)) && !workingSegment.image_url) {
+        updates.image_url = toRelativeAssetUrl(await onGenerateImage(workingSegment));
+        workingSegment.image_url = updates.image_url;
+      }
+
+      if ((status === 'video' || status === 'done') && !workingSegment.video_url) {
+        updates.video_url = toRelativeAssetUrl(await onGenerateVideo(workingSegment));
+        updates.assembled_url = null;
+        workingSegment.video_url = updates.video_url;
+        workingSegment.assembled_url = null;
+      }
+
+      if (status === 'done') {
+        if (!workingSegment.video_url || !workingSegment.voice_url || !workingSegment.srt) {
+          throw new Error('Done assembly requires a video clip, voice clip, and SRT captions.');
+        }
+
+        updates.assembled_url = await assembleSegment(workingSegment);
       }
 
       await updateSegment(segment.id, updates);
@@ -190,7 +341,31 @@ export function WorkflowBoardSection({
 
     setBusySegmentId(editingSegment.id);
     try {
-      await updateSegment(editingSegment.id, draft);
+      const oldAssembledUrl = editingSegment.assembled_url;
+      const nextSegment = {
+        ...editingSegment,
+        ...draft,
+      };
+      let assembledUrl = editingSegment.assembled_url;
+
+      if (
+        editingSegment.status === 'done'
+        && editingSegment.video_no_sound !== draft.video_no_sound
+        && nextSegment.video_url
+        && nextSegment.voice_url
+        && nextSegment.srt
+      ) {
+        assembledUrl = await assembleSegment(nextSegment);
+      }
+
+      const updatedSegment = await updateSegment(editingSegment.id, {
+        ...draft,
+        assembled_url: assembledUrl,
+      });
+      setEditingSegment((current) => (current?.id === editingSegment.id ? updatedSegment : current));
+      if (assembledUrl && oldAssembledUrl && assembledUrl !== oldAssembledUrl) {
+        await deleteAsset(oldAssembledUrl);
+      }
       setEditingSegment(null);
       await onReload();
     } catch (err) {
@@ -235,6 +410,29 @@ export function WorkflowBoardSection({
     }
   };
 
+  const finalizeWorkflow = async (workflow: Workflow) => {
+    setBusyWorkflowId(workflow.id);
+
+    try {
+      const response = await fetch('/api/workflows/finalize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workflowId: workflow.id }),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(typeof data.error === 'string' ? data.error : 'Failed to finalize workflow.');
+      }
+
+      await onReload();
+    } catch (err) {
+      onError('Workflow finalize failed', err);
+    } finally {
+      setBusyWorkflowId(null);
+    }
+  };
+
   return (
     <div className="workflow-section mt-6">
       <div className="gemini-section-header">
@@ -249,18 +447,38 @@ export function WorkflowBoardSection({
         <div className="workflow-control-strip">
           {workflows.map((workflow) => (
             <div key={workflow.id} className="workflow-control-item">
-              <div>
+              <div className="workflow-control-meta">
                 <strong>{workflow.title}</strong>
                 <p className="audio-empty-copy">{workflow.segments.length} segment{workflow.segments.length === 1 ? '' : 's'}</p>
+                {workflow.finalized_url && (
+                  <div className="workflow-link-row">
+                    <a className="workflow-link" href={buildDisplayUrl(workflow.finalized_url)} target="_blank" rel="noreferrer">
+                      Open final
+                    </a>
+                    <a className="workflow-link" href={buildDisplayUrl(workflow.finalized_url)} download>
+                      Download
+                    </a>
+                  </div>
+                )}
               </div>
-              <button
-                type="button"
-                className="workflow-nuke-button"
-                onClick={() => openNukeDialog(workflow)}
-                disabled={busyWorkflowId === workflow.id || isLoading}
-              >
-                Nuke workflow
-              </button>
+              <div className="workflow-control-actions">
+                <button
+                  type="button"
+                  className="gemini-secondary-button"
+                  onClick={() => { void finalizeWorkflow(workflow); }}
+                  disabled={busyWorkflowId === workflow.id || isLoading || !workflow.segments.some((segment) => Boolean(segment.assembled_url))}
+                >
+                  {busyWorkflowId === workflow.id ? 'Finalizing...' : 'Finalize'}
+                </button>
+                <button
+                  type="button"
+                  className="workflow-nuke-button"
+                  onClick={() => openNukeDialog(workflow)}
+                  disabled={busyWorkflowId === workflow.id || isLoading}
+                >
+                  Nuke workflow
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -302,14 +520,16 @@ export function WorkflowBoardSection({
                       <audio controls preload="none" className="audio-player" src={buildDisplayUrl(segment.voice_url)} />
                     )}
 
+                    {segment.video_url && (
+                      <video controls preload="metadata" className="video-player" src={buildDisplayUrl(segment.assembled_url || segment.video_url)} />
+                    )}
+
                     <div className="workflow-card-actions">
                       <button
                         type="button"
                         className="gemini-secondary-button"
                         disabled={busySegmentId === segment.id || isLoading}
-                        onClick={() => {
-                          void replaceSegmentAsset(segment, 'voice_url', () => generateVoice(segment));
-                        }}
+                        onClick={() => { void replaceSegmentVoice(segment); }}
                       >
                         Regenerate voice
                       </button>
@@ -322,6 +542,22 @@ export function WorkflowBoardSection({
                         }}
                       >
                         Regenerate image
+                      </button>
+                      <button
+                        type="button"
+                        className="gemini-secondary-button"
+                        disabled={busySegmentId === segment.id || isLoading}
+                        onClick={() => { void replaceSegmentVideo(segment); }}
+                      >
+                        Regenerate video
+                      </button>
+                      <button
+                        type="button"
+                        className="gemini-secondary-button"
+                        disabled={busySegmentId === segment.id || isLoading || !segment.video_url || !segment.voice_url || !segment.srt}
+                        onClick={() => { void replaceSegmentAssembled(segment); }}
+                      >
+                        Re-assemble
                       </button>
                     </div>
 
@@ -357,7 +593,7 @@ export function WorkflowBoardSection({
       {editingSegment && (
         <div className="system-prompt-detail-overlay" role="presentation" onClick={() => setEditingSegment(null)}>
           <div
-            className="system-prompt-detail-card"
+            className="system-prompt-detail-card workflow-detail-card"
             role="dialog"
             aria-modal="true"
             aria-labelledby="segment-edit-title"
@@ -402,6 +638,15 @@ export function WorkflowBoardSection({
               rows={4}
             />
 
+            <label className="video-checkbox-row">
+              <input
+                type="checkbox"
+                checked={draft.video_no_sound}
+                onChange={(event) => setDraft((current) => ({ ...current, video_no_sound: event.target.checked }))}
+              />
+              <span>Mute source video audio in final assembly</span>
+            </label>
+
             <div className="workflow-asset-grid">
               <div>
                 <span className="cockpit-meta-label">Voice URL</span>
@@ -415,17 +660,22 @@ export function WorkflowBoardSection({
                 <span className="cockpit-meta-label">Video URL</span>
                 <p className="cockpit-meta-value">{editingSegment.video_url || 'TBD'}</p>
               </div>
+              <div>
+                <span className="cockpit-meta-label">Assembled URL</span>
+                <p className="cockpit-meta-value">{editingSegment.assembled_url || 'Not assembled'}</p>
+              </div>
+              <div>
+                <span className="cockpit-meta-label">SRT</span>
+                <p className="cockpit-meta-value">{editingSegment.srt ? 'Available' : 'Not generated'}</p>
+              </div>
+              <div>
+                <span className="cockpit-meta-label">Video Audio</span>
+                <p className="cockpit-meta-value">{draft.video_no_sound ? 'Muted in assembly' : 'Mixed at 40%'}</p>
+              </div>
             </div>
 
             <div className="system-prompt-detail-actions">
-              <button
-                type="button"
-                className="gemini-secondary-button"
-                onClick={() => {
-                  void replaceSegmentAsset(editingSegment, 'voice_url', () => generateVoice(editingSegment));
-                }}
-                disabled={busySegmentId === editingSegment.id}
-              >
+              <button type="button" className="gemini-secondary-button" onClick={() => { void replaceSegmentVoice(editingSegment); }} disabled={busySegmentId === editingSegment.id}>
                 Regenerate voice
               </button>
               <button
@@ -438,15 +688,21 @@ export function WorkflowBoardSection({
               >
                 Regenerate image
               </button>
-              <button type="button" className="gemini-secondary-button" onClick={() => setEditingSegment(null)}>
-                Cancel
+              <button type="button" className="gemini-secondary-button" onClick={() => { void replaceSegmentVideo(editingSegment); }} disabled={busySegmentId === editingSegment.id}>
+                Regenerate video
               </button>
               <button
                 type="button"
-                className="gemini-save-button"
-                onClick={() => { void saveDraft(); }}
-                disabled={busySegmentId === editingSegment.id}
+                className="gemini-secondary-button"
+                onClick={() => { void replaceSegmentAssembled(editingSegment); }}
+                disabled={busySegmentId === editingSegment.id || !editingSegment.video_url || !editingSegment.voice_url || !editingSegment.srt}
               >
+                Re-assemble
+              </button>
+              <button type="button" className="gemini-secondary-button" onClick={() => setEditingSegment(null)}>
+                Cancel
+              </button>
+              <button type="button" className="gemini-save-button" onClick={() => { void saveDraft(); }} disabled={busySegmentId === editingSegment.id}>
                 {busySegmentId === editingSegment.id ? 'Saving...' : 'Save changes'}
               </button>
             </div>
@@ -468,12 +724,7 @@ export function WorkflowBoardSection({
                 <p className="voice-section-kicker">Destructive Action</p>
                 <h3 id="workflow-nuke-title">Nuke workflow?</h3>
               </div>
-              <button
-                type="button"
-                className="system-prompt-detail-close"
-                onClick={() => setNukeDialog(null)}
-                aria-label="Cancel workflow nuke"
-              >
+              <button type="button" className="system-prompt-detail-close" onClick={() => setNukeDialog(null)} aria-label="Cancel workflow nuke">
                 x
               </button>
             </div>
@@ -484,9 +735,7 @@ export function WorkflowBoardSection({
                 This removes the workflow, all segment cards, and local generated assets attached to those cards.
               </p>
               <span className="workflow-nuke-countdown">
-                {nukeDialog.armedIn > 0
-                  ? `Arming in ${nukeDialog.armedIn}s`
-                  : `Auto-cancel in ${nukeDialog.expiresIn}s`}
+                {nukeDialog.armedIn > 0 ? `Arming in ${nukeDialog.armedIn}s` : `Auto-cancel in ${nukeDialog.expiresIn}s`}
               </span>
             </div>
 

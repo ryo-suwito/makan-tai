@@ -639,6 +639,7 @@ function parseWorkflowSegmentsFromText(value: string): WorkflowSegmentDraft[] {
           order: Number.isFinite(Number(record.order)) ? Number(record.order) : index + 1,
           text,
           image_prompt: imagePrompt,
+          video_no_sound: Boolean(record.video_no_sound),
           video_prompt: videoPrompt,
         } satisfies WorkflowSegmentDraft;
       })

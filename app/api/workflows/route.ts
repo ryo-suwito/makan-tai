@@ -48,10 +48,12 @@ export async function DELETE(req: NextRequest) {
     }
 
     const urls = workflow.segments.flatMap((segment) => [
+      segment.assembled_url,
       segment.image_url,
       segment.video_url,
       segment.voice_url,
     ]);
+    urls.push(workflow.finalized_url);
     await Promise.all(urls.map((url) => deleteLocalGeneratedAsset(url)));
 
     return NextResponse.json({ success: true, data: workflow });
@@ -63,7 +65,16 @@ export async function DELETE(req: NextRequest) {
 
 async function deleteLocalGeneratedAsset(value: string | null) {
   const pathname = extractPathname(value);
-  if (!pathname || (!pathname.startsWith('/generated/') && !pathname.startsWith('/generated-audio/'))) {
+  if (
+    !pathname
+    || (
+      !pathname.startsWith('/generated/')
+      && !pathname.startsWith('/generated-audio/')
+      && !pathname.startsWith('/generated-video/')
+      && !pathname.startsWith('/generated-video-assembled/')
+      && !pathname.startsWith('/generated-video-finalized/')
+    )
+  ) {
     return;
   }
 
@@ -77,6 +88,18 @@ async function deleteLocalGeneratedAsset(value: string | null) {
 
   if (pathname.startsWith('/generated-audio/') && pathname.toLowerCase().endsWith('.wav')) {
     await unlink(filePath.replace(/\.wav$/i, '.json')).catch(() => undefined);
+  }
+
+  if (pathname.startsWith('/generated-video/') && pathname.toLowerCase().endsWith('.mp4')) {
+    await unlink(filePath.replace(/\.mp4$/i, '.json')).catch(() => undefined);
+  }
+
+  if (pathname.startsWith('/generated-video-assembled/') && pathname.toLowerCase().endsWith('.mp4')) {
+    await unlink(filePath.replace(/\.mp4$/i, '.json')).catch(() => undefined);
+  }
+
+  if (pathname.startsWith('/generated-video-finalized/') && pathname.toLowerCase().endsWith('.mp4')) {
+    await unlink(filePath.replace(/\.mp4$/i, '.json')).catch(() => undefined);
   }
 }
 

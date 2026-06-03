@@ -1,12 +1,20 @@
 import Image from 'next/image';
+import { normalizeLocalAssetUrl } from '@/lib/asset-urls';
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import type { Quality } from '@/lib/cost';
+import Select from 'react-select';
+import type { SingleValue } from 'react-select';
 import {
   GEMINI_ASPECT_RATIOS,
   type GeminiAspectRatio,
   type ImageGenerationModel,
 } from '@/lib/image-models';
-import type { SavedPrompt } from '@/components/home/types';
+import type {
+  FalImageModelOption,
+  SavedPrompt,
+  SelfHostImageModelOption,
+} from '@/components/home/types';
+import { ImageGallerySelector } from '@/components/home/ImageGallerySelector';
 
 interface ImageStudioSectionProps {
   availableImages: string[];
@@ -16,13 +24,20 @@ interface ImageStudioSectionProps {
   inputPromptPrefix: string;
   inputPromptSuffix: string;
   inputReferenceImages: string[];
+  isFalImageModel: boolean;
   isGeminiModel: boolean;
   isOpenAiModel: boolean;
+  isSelfHostImageModel: boolean;
   isSavingDisabled?: boolean;
   isSubmitting: boolean;
+  falImageEstimate: string | null;
+  falImageModel: FalImageModelOption;
+  falImageModelOptions: FalImageModelOption[];
   model: ImageGenerationModel;
   quality: Quality;
   savedPrompts: SavedPrompt[];
+  selfHostImageModel: SelfHostImageModelOption;
+  selfHostImageModelOptions: SelfHostImageModelOption[];
   totalCost: number | null;
   width: number;
   height: number;
@@ -31,6 +46,7 @@ interface ImageStudioSectionProps {
   onClearPrompt: () => void;
   onClearReferenceImages: () => void;
   onDeleteSavedPrompt: (id: number) => void;
+  onFalImageModelChange: (option: FalImageModelOption) => void;
   onGenerateImage: () => void;
   onGeminiAspectRatioChange: (aspectRatio: GeminiAspectRatio) => void;
   onHeightChange: (value: number) => void;
@@ -44,6 +60,7 @@ interface ImageStudioSectionProps {
   onQualityChange: (quality: Quality) => void;
   onRemoveReferenceImage: (url: string) => void;
   onSavePrompt: () => void;
+  onSelfHostImageModelChange: (option: SelfHostImageModelOption) => void;
   onTogglePreviousImage: (url: string) => void;
   onWidthChange: (value: number) => void;
 }
@@ -61,13 +78,20 @@ export function ImageStudioSection({
   inputPromptPrefix,
   inputPromptSuffix,
   inputReferenceImages,
+  isFalImageModel,
   isGeminiModel,
   isOpenAiModel,
+  isSelfHostImageModel,
   isSavingDisabled = false,
   isSubmitting,
+  falImageEstimate,
+  falImageModel,
+  falImageModelOptions,
   model,
   quality,
   savedPrompts,
+  selfHostImageModel,
+  selfHostImageModelOptions,
   totalCost,
   width,
   height,
@@ -76,6 +100,7 @@ export function ImageStudioSection({
   onClearPrompt,
   onClearReferenceImages,
   onDeleteSavedPrompt,
+  onFalImageModelChange,
   onGenerateImage,
   onGeminiAspectRatioChange,
   onHeightChange,
@@ -89,6 +114,7 @@ export function ImageStudioSection({
   onQualityChange,
   onRemoveReferenceImage,
   onSavePrompt,
+  onSelfHostImageModelChange,
   onTogglePreviousImage,
   onWidthChange,
 }: ImageStudioSectionProps) {
@@ -261,7 +287,73 @@ export function ImageStudioSection({
           <option value="gpt-image-1-mini">GPT Image 1 Mini</option>
           <option value="gemini-2.5-flash-image">Gemini 2.5 Flash Image</option>
           <option value="a2e">A2E</option>
+          <option value="fal-ai">Fal.ai</option>
+          <option value="self-host">Self-Host</option>
         </select>
+
+        {isFalImageModel && (
+          <>
+            <label className="block mb-1">Fal.ai Model</label>
+            <div className="openrouter-model-select">
+              <Select
+                classNamePrefix="openrouter-select"
+                formatOptionLabel={(option: FalImageModelOption) => (
+                  <div>
+                    <div>{option.label}</div>
+                    <div className="openrouter-option-meta">
+                      {option.unit} · {option.price} · {option.outputPerDollar}
+                    </div>
+                  </div>
+                )}
+                isClearable={false}
+                menuPlacement="auto"
+                onChange={(option: SingleValue<FalImageModelOption>) => {
+                  if (option) {
+                    onFalImageModelChange(option);
+                  }
+                }}
+                options={falImageModelOptions}
+                placeholder="Select a Fal.ai image model..."
+                unstyled
+                value={falImageModel}
+              />
+            </div>
+            <p className="text-sm text-gray-600 mb-2">
+              Fixed Fal.ai model list with current billing metadata. No favorites are stored for image models.
+            </p>
+          </>
+        )}
+
+        {isSelfHostImageModel && (
+          <>
+            <label className="block mb-1">Self-Host Model</label>
+            <div className="openrouter-model-select">
+              <Select
+                classNamePrefix="openrouter-select"
+                formatOptionLabel={(option: SelfHostImageModelOption) => (
+                  <div>
+                    <div>{option.label}</div>
+                    <div className="openrouter-option-meta">{option.note}</div>
+                  </div>
+                )}
+                isClearable={false}
+                menuPlacement="auto"
+                onChange={(option: SingleValue<SelfHostImageModelOption>) => {
+                  if (option) {
+                    onSelfHostImageModelChange(option);
+                  }
+                }}
+                options={selfHostImageModelOptions}
+                placeholder="Select a self-host image model..."
+                unstyled
+                value={selfHostImageModel}
+              />
+            </div>
+            <p className="text-sm text-gray-600 mb-2">
+              Routes image generation to the local self-host inference server.
+            </p>
+          </>
+        )}
 
         <label className="block mb-1">Quality</label>
         <div className="flex space-x-3 mb-2">
@@ -281,7 +373,7 @@ export function ImageStudioSection({
         </div>
         {!isOpenAiModel && (
           <p className="text-sm text-gray-600 mb-2">
-            Quality only applies to GPT Image models. Gemini uses aspect ratio, and A2E ignores this control.
+            Quality only applies to GPT Image models. Gemini uses aspect ratio, while A2E, Fal.ai, and self-host ignore this control.
           </p>
         )}
 
@@ -369,7 +461,7 @@ export function ImageStudioSection({
                 return (
                   <div key={`${image}-${index}`} className="reference-selected-card">
                     <div className="reference-selected-image">
-                      <Image src={image} alt={`Selected reference ${index + 1}`} fill style={{ objectFit: 'cover' }} />
+                      <Image src={normalizeLocalAssetUrl(image)} alt={`Selected reference ${index + 1}`} fill style={{ objectFit: 'cover' }} />
                     </div>
                     <div className="reference-selected-meta">
                       <span className="reference-source-pill">{fromLibrary ? 'Previous image' : 'Device upload'}</span>
@@ -401,48 +493,13 @@ export function ImageStudioSection({
         )}
 
         {availableImages.length > 0 && (
-          <div className="system-prompt-library mb-4">
-            <div className="reference-gallery-header">
-              <strong>Select from previous images</strong>
-              <span className="system-prompt-count">{selectedLibraryCount} selected</span>
-            </div>
-            <p className="reference-selection-summary">
-              Browsing {visibleAvailableImages.length} of {availableImages.length} saved images. Scroll to load more.
-            </p>
-            <div ref={galleryScrollRef} className="reference-gallery-scroll">
-              <div className="reference-gallery-grid">
-                {visibleAvailableImages.map((image, index) => {
-                  const isSelected = inputReferenceImages.includes(image);
-                  return (
-                    <button
-                      key={`${image}-${index}`}
-                      type="button"
-                      className={`reference-gallery-item${isSelected ? ' reference-gallery-item-selected' : ''}`}
-                      onClick={() => onTogglePreviousImage(image)}
-                    >
-                      <div className="reference-gallery-image">
-                        <Image src={image} alt={`Available ${index + 1}`} fill style={{ objectFit: 'cover' }} />
-                      </div>
-                      <div className="reference-gallery-meta">
-                        <span>{isSelected ? 'Selected' : 'Click to add'}</span>
-                        <span className="reference-gallery-check">{isSelected ? 'Remove' : `#${index + 1}`}</span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-              <div ref={gallerySentinelRef} className="reference-gallery-sentinel" />
-            </div>
-            {visibleAvailableCount < availableImages.length && (
-              <button
-                type="button"
-                className="reference-load-more"
-                onClick={() => setVisibleAvailableCount((current) => Math.min(current + 18, availableImages.length))}
-              >
-                Load more previous images
-              </button>
-            )}
-          </div>
+          <ImageGallerySelector
+            availableImages={availableImages}
+            multiSelect
+            selectedImages={inputReferenceImages}
+            onToggleImage={onTogglePreviousImage}
+            emptyMessage="No previous generated images yet. Generate one first and it will show up here as a reusable reference."
+          />
         )}
 
         {availableImages.length === 0 && (
@@ -461,6 +518,10 @@ export function ImageStudioSection({
           {totalCost !== null ? (
             <>
               <strong>Estimated cost:</strong> ${totalCost} for {batchSize} image(s)
+            </>
+          ) : isFalImageModel && falImageEstimate ? (
+            <>
+              <strong>Estimated cost:</strong> {falImageEstimate}
             </>
           ) : isGeminiModel ? (
             <>

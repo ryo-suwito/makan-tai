@@ -8,7 +8,13 @@ interface DeleteAssetBody {
   url?: string;
 }
 
-const DELETABLE_PREFIXES = ['/generated/', '/generated-audio/'];
+const DELETABLE_PREFIXES = [
+  '/generated/',
+  '/generated-audio/',
+  '/generated-video/',
+  '/generated-video-assembled/',
+  '/generated-video-finalized/',
+];
 
 export async function DELETE(req: NextRequest) {
   try {
@@ -30,6 +36,21 @@ export async function DELETE(req: NextRequest) {
 
     if (pathname.startsWith('/generated-audio/') && pathname.toLowerCase().endsWith('.wav')) {
       const metadataPath = filePath.replace(/\.wav$/i, '.json');
+      await unlink(metadataPath).catch(() => undefined);
+    }
+
+    if (pathname.startsWith('/generated-video/') && pathname.toLowerCase().endsWith('.mp4')) {
+      const metadataPath = filePath.replace(/\.mp4$/i, '.json');
+      await unlink(metadataPath).catch(() => undefined);
+    }
+
+    if (pathname.startsWith('/generated-video-assembled/') && pathname.toLowerCase().endsWith('.mp4')) {
+      const metadataPath = filePath.replace(/\.mp4$/i, '.json');
+      await unlink(metadataPath).catch(() => undefined);
+    }
+
+    if (pathname.startsWith('/generated-video-finalized/') && pathname.toLowerCase().endsWith('.mp4')) {
+      const metadataPath = filePath.replace(/\.mp4$/i, '.json');
       await unlink(metadataPath).catch(() => undefined);
     }
 

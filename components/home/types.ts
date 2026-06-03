@@ -4,6 +4,28 @@ export interface GeneratedImage {
   url: string;
 }
 
+export type FalImageModelId =
+  | 'seedream-v4'
+  | 'flux-kontext-pro'
+  | 'nano-banana'
+  | 'qwen-image';
+
+export interface FalImageModelOption {
+  label: string;
+  outputPerDollar: string;
+  price: string;
+  unit: 'image' | 'megapixel';
+  value: FalImageModelId;
+}
+
+export type SelfHostImageModelId = 'flux-schnell' | 'flux-dev';
+
+export interface SelfHostImageModelOption {
+  label: string;
+  note: string;
+  value: SelfHostImageModelId;
+}
+
 export interface AlertDialogState {
   title: string;
   message: string;
@@ -26,6 +48,45 @@ export interface GeneratedAudioClip {
   url: string;
   voiceId?: string | null;
   voiceName?: string | null;
+}
+
+export type FalVideoModel =
+  | 'fal-ai/wan/v2.2-a14b/image-to-video'
+  | 'fal-ai/wan/v2.2-5b/image-to-video'
+  | 'fal-ai/wan/v2.7/image-to-video'
+  | 'fal-ai/hunyuan-video-image-to-video'
+  | 'fal-ai/ltx-2.3/image-to-video/fast';
+
+export type FalVideoAspectRatio = 'auto' | '16:9' | '1:1' | '9:16';
+export type FalVideoDuration =
+  | '2'
+  | '3'
+  | '4'
+  | '5'
+  | '6'
+  | '7'
+  | '8'
+  | '9'
+  | '10'
+  | '11'
+  | '12'
+  | '13'
+  | '14'
+  | '15'
+  | '16'
+  | '18'
+  | '20';
+export type FalVideoResolution = '480p' | '720p' | '1080p';
+
+export interface GeneratedVideoClip {
+  aspectRatio?: FalVideoAspectRatio | null;
+  createdAt?: string | null;
+  duration?: FalVideoDuration | null;
+  filename: string;
+  model?: FalVideoModel | null;
+  promptPreview?: string | null;
+  resolution?: FalVideoResolution | null;
+  url: string;
 }
 
 export interface SystemPrompt {
@@ -83,18 +144,22 @@ export interface WorkflowSegmentDraft {
   image_prompt: string;
   order: number;
   text: string;
+  video_no_sound: boolean;
   video_prompt: string;
 }
 
 export interface WorkflowSegment {
+  assembled_url: string | null;
   created_at: string;
   id: number;
   image_prompt: string;
   image_url: string | null;
   order: number;
+  srt: string | null;
   status: WorkflowSegmentStatus;
   text: string;
   updated_at: string;
+  video_no_sound: boolean;
   video_prompt: string;
   video_url: string | null;
   voice_url: string | null;
@@ -103,6 +168,7 @@ export interface WorkflowSegment {
 
 export interface Workflow {
   created_at: string;
+  finalized_url: string | null;
   id: number;
   segments: WorkflowSegment[];
   title: string;

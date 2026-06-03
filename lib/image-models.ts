@@ -13,10 +13,20 @@ export const OTHER_IMAGE_MODELS = [
   'a2e',
 ] as const;
 
+export const FAL_IMAGE_VENDOR = 'fal-ai' as const;
+export const SELF_HOST_IMAGE_VENDOR = 'self-host' as const;
+
 export type OpenAiImageModel = typeof OPENAI_IMAGE_MODELS[number];
 export type GeminiImageModel = typeof GEMINI_IMAGE_MODELS[number];
 export type OtherImageModel = typeof OTHER_IMAGE_MODELS[number];
-export type ImageGenerationModel = OpenAiImageModel | GeminiImageModel | OtherImageModel;
+export type FalImageVendor = typeof FAL_IMAGE_VENDOR;
+export type SelfHostImageVendor = typeof SELF_HOST_IMAGE_VENDOR;
+export type ImageGenerationModel =
+  | OpenAiImageModel
+  | GeminiImageModel
+  | OtherImageModel
+  | FalImageVendor
+  | SelfHostImageVendor;
 
 export const GEMINI_ASPECT_RATIOS = ['1:1', '3:4', '4:3', '9:16', '16:9'] as const;
 export type GeminiAspectRatio = typeof GEMINI_ASPECT_RATIOS[number];
@@ -35,6 +45,14 @@ export function isOpenAiImageModel(model: string): model is OpenAiImageModel {
 
 export function isGeminiImageModel(model: string): model is GeminiImageModel {
   return GEMINI_IMAGE_MODELS.includes(model as GeminiImageModel);
+}
+
+export function isFalImageVendor(model: string): model is FalImageVendor {
+  return model === FAL_IMAGE_VENDOR;
+}
+
+export function isSelfHostImageVendor(model: string): model is SelfHostImageVendor {
+  return model === SELF_HOST_IMAGE_VENDOR;
 }
 
 export function getClosestGeminiAspectRatio(width: number, height: number): GeminiAspectRatio {

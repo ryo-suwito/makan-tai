@@ -144,6 +144,7 @@ OPENROUTER_APP_NAME=AI Image + Voice Studio
 
 A2E_API_KEY=your_a2e_api_key_here
 A2E_API_BASE=https://video.a2e.ai/api/v1
+SELF_HOST_INFERENCE_BASE=http://localhost:8000
 
 DATABASE_PATH=./data/database.sqlite
 ```
@@ -168,6 +169,8 @@ DATABASE_PATH=./data/database.sqlite
   Required if you want to use the `a2e` image model option.
 - `A2E_API_BASE`
   Defaults to `https://video.a2e.ai/api/v1`.
+- `SELF_HOST_INFERENCE_BASE`
+  Optional. Defaults to `http://localhost:8000` and is used when you pick the `Self-Host` vendor for image generation.
 - `DATABASE_PATH`
   Defaults to `./data/database.sqlite`.
 
@@ -200,8 +203,16 @@ Tables:
 Generates images from the selected model.
 
 - GPT Image requests are forwarded to `OPENAI_API_BASE/images/generations`
+- Self-Host image requests are forwarded to `SELF_HOST_INFERENCE_BASE/api/generate`
 - A2E requests are started and then polled until image URLs are available
 - Returned image URLs are fetched and saved locally under `public/generated`
+
+### `POST /api/fal/video`
+
+Generates Fal video clips for workflow segments from an existing start image.
+
+- Fal video requests are forwarded to `https://fal.run/...`
+- Returned video URLs are fetched and saved locally under `public/generated-video`
 
 ### `GET /api/images`
 

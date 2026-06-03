@@ -13,8 +13,14 @@ import {
   mapOpenRouterModelToOption,
   type AlertDialogState,
   type CartesiaVoice,
+  type FalImageModelOption,
+  type FalVideoAspectRatio,
+  type FalVideoDuration,
+  type FalVideoModel,
+  type FalVideoResolution,
   type GeneratedAudioClip,
   type GeneratedImage,
+  type GeneratedVideoClip,
   type OpenRouterModelApiItem,
   type OpenRouterModelOption,
   type SavedPrompt,
@@ -27,17 +33,38 @@ import {
   type WorkflowSegment,
   type WorkflowSegmentDraft,
 } from '@/components/home/types';
+import { VideoGeneratorSection } from '@/components/home/VideoGeneratorSection';
 import { VoiceGeneratorSection } from '@/components/home/VoiceGeneratorSection';
 import { WorkflowBoardSection } from '@/components/home/WorkflowBoardSection';
 import { estimateTotalCost } from '@/lib/cost';
 import {
+  DEFAULT_FAL_IMAGE_MODEL,
+  FAL_IMAGE_MODEL_OPTIONS,
+  estimateFalImageTotalCost,
+} from '@/lib/fal-image-models';
+import {
+  DEFAULT_FAL_VIDEO_ASPECT_RATIO,
+  DEFAULT_FAL_VIDEO_DURATION,
+  DEFAULT_FAL_VIDEO_MODEL,
+  DEFAULT_FAL_VIDEO_RESOLUTION,
+  FAL_VIDEO_MODEL_OPTIONS,
+  getClosestSupportedFalVideoDuration,
+  getSupportedFalVideoDurations,
+} from '@/lib/fal-video-models';
+import {
   GEMINI_ASPECT_RATIO_DIMENSIONS,
   getClosestGeminiAspectRatio,
+  isFalImageVendor,
   isGeminiImageModel,
   isOpenAiImageModel,
+  isSelfHostImageVendor,
   type GeminiAspectRatio,
   type ImageGenerationModel,
 } from '@/lib/image-models';
+import {
+  DEFAULT_SELF_HOST_IMAGE_MODEL,
+  SELF_HOST_IMAGE_MODEL_OPTIONS,
+} from '@/lib/self-host-image-models';
 import type { StyleDnaProfile } from '@/lib/style-dna';
 
 const CARTESIA_SAMPLE_RATE = 44100;
@@ -46,6 +73,7 @@ const FLOATING_SHORTCUTS = [
   { href: '#cockpit', label: 'Connect', shortLabel: 'Hub' },
   { href: '#image-studio', label: 'Image Studio', shortLabel: 'Img' },
   { href: '#voice-generator', label: 'Voice Generator', shortLabel: 'Voice' },
+  { href: '#video-generator', label: 'Video Generator', shortLabel: 'Vid' },
   { href: '#style-dna', label: 'Style DNA', shortLabel: 'DNA' },
   { href: '#prompt-writer', label: 'Prompt Writer', shortLabel: 'Text' },
   { href: '#workflows', label: 'Workflows', shortLabel: 'Flow' },
@@ -106,6 +134,8 @@ export default function Home() {
   const [height, setHeight] = useState(1024);
   const [batchSize, setBatchSize] = useState(1);
   const [model, setModel] = useState<ImageGenerationModel>('gpt-image-2');
+  const [falImageModel, setFalImageModel] = useState<FalImageModelOption>(DEFAULT_FAL_IMAGE_MODEL);
+  const [selfHostImageModel, setSelfHostImageModel] = useState(DEFAULT_SELF_HOST_IMAGE_MODEL);
   const [quality, setQuality] = useState<'low' | 'medium' | 'high'>('medium');
   const [inputImages, setInputImages] = useState<string[]>([]);
   const [availableImages, setAvailableImages] = useState<string[]>([]);
@@ -120,6 +150,14 @@ export default function Home() {
   const [ttsGenerating, setTtsGenerating] = useState(false);
   const [ttsVoicesLoading, setTtsVoicesLoading] = useState(false);
   const [ttsVoicesError, setTtsVoicesError] = useState<string | null>(null);
+  const [videoPrompt, setVideoPrompt] = useState('');
+  const [videoImageUrl, setVideoImageUrl] = useState('');
+  const [videoModel, setVideoModel] = useState<FalVideoModel>(DEFAULT_FAL_VIDEO_MODEL);
+  const [savedVideoClips, setSavedVideoClips] = useState<GeneratedVideoClip[]>([]);
+  const [videoResolution, setVideoResolution] = useState<FalVideoResolution>(DEFAULT_FAL_VIDEO_RESOLUTION);
+  const [videoDuration, setVideoDuration] = useState<FalVideoDuration>(DEFAULT_FAL_VIDEO_DURATION);
+  const [videoAspectRatio, setVideoAspectRatio] = useState<FalVideoAspectRatio>(DEFAULT_FAL_VIDEO_ASPECT_RATIO);
+  const [videoGenerating, setVideoGenerating] = useState(false);
 
   const [systemPrompts, setSystemPrompts] = useState<SystemPrompt[]>([]);
   const [systemPromptName, setSystemPromptName] = useState('');
@@ -149,16 +187,25 @@ export default function Home() {
   const [alertDialog, setAlertDialog] = useState<AlertDialogState | null>(null);
   const ttsCleanupRef = useRef<(() => Promise<void>) | null>(null);
   const ttsRequestIdRef = useRef(0);
+  const workflowAudioDurationCacheRef = useRef(new Map<string, number>());
 
   const selectedTtsVoice = ttsVoices.find((voice) => voice.id === selectedTtsVoiceId) ?? null;
   const selectedSystemPrompt = systemPrompts.find((item) => String(item.id) === selectedSystemPromptId) ?? null;
   const selectedStyleDna = styleDnaProfiles.find((item) => String(item.id) === selectedStyleDnaId) ?? null;
-  const isOpenAiModel = isOpenAiImageModel(model);
-  const isGeminiModel = isGeminiImageModel(model);
+  const isFalModel = isFalImageVendor(model);
+  const isSelfHostModel = isSelfHostImageVendor(model);
+  const resolvedImageModel = isFalModel ? falImageModel.value : isSelfHostModel ? selfHostImageModel.value : model;
+  const isOpenAiModel = isOpenAiImageModel(resolvedImageModel);
+  const isGeminiModel = isGeminiImageModel(resolvedImageModel);
   const geminiAspectRatio = getClosestGeminiAspectRatio(width, height);
-  const totalCost = estimateTotalCost(isOpenAiModel ? model : null, quality, width, height, batchSize);
+  const totalCost = estimateTotalCost(isOpenAiModel ? resolvedImageModel : null, quality, width, height, batchSize);
+  const falImageEstimate = isFalModel
+    ? `$${estimateFalImageTotalCost(falImageModel.value, width, height, batchSize)} for ${batchSize} image(s)`
+    : null;
+  const supportedVideoDurations = getSupportedFalVideoDurations(videoModel);
   const styleDnaEngineLabel = `OpenRouter · ${openRouterModel.label}`;
   const outputCharacterCount = geminiOutputText.length;
+
   const isThreadsLengthExceeded = outputCharacterCount > 500;
   const isThreadsReady = Boolean(threadsConnection?.connected);
   const isSelectedOpenRouterFavorite = favoriteOpenRouterModels.some((item) => item.value === openRouterModel.value);
@@ -262,6 +309,21 @@ export default function Home() {
       setSavedAudioClips(Array.isArray(data.generated) ? data.generated : []);
     } catch (err) {
       console.error('Failed to load saved audio clips', err);
+    }
+  };
+
+  const loadSavedVideoClips = async () => {
+    try {
+      const response = await fetch('/api/fal/video');
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(typeof data.error === 'string' ? data.error : 'Failed to load saved video clips.');
+      }
+
+      setSavedVideoClips(Array.isArray(data.generated) ? data.generated as GeneratedVideoClip[] : []);
+    } catch (err) {
+      console.error('Failed to load saved video clips', err);
     }
   };
 
@@ -375,6 +437,7 @@ export default function Home() {
     void loadAvailableImages().catch((err) => console.error('Failed to load images', err));
     void loadCartesiaVoices();
     void loadSavedAudioClips();
+    void loadSavedVideoClips();
     void loadSystemPrompts().catch((err) => console.error('Failed to load system prompts', err));
     void loadStyleDnaProfiles().catch((err) => console.error('Failed to load Style DNA profiles', err));
     void loadOpenRouterFavorites().catch((err) => console.error('Failed to load OpenRouter favorites', err));
@@ -616,6 +679,66 @@ export default function Home() {
     }
   };
 
+  const generateFalVideo = async (input: {
+    aspectRatio: FalVideoAspectRatio;
+    duration: FalVideoDuration;
+    imageUrl: string;
+    model: FalVideoModel;
+    prompt: string;
+    resolution: FalVideoResolution;
+  }) => {
+    const response = await axios.post('/api/fal/video', {
+      prompt: input.prompt,
+      imageUrl: input.imageUrl,
+      model: input.model,
+      duration: input.duration,
+      resolution: input.resolution,
+      aspectRatio: input.aspectRatio,
+    });
+
+    const url = response.data?.data?.url;
+    if (typeof url !== 'string' || !url) {
+      throw new Error('Video generation completed without returning a video URL.');
+    }
+
+    await loadSavedVideoClips();
+    return url;
+  };
+
+  const getWorkflowAudioDurationSeconds = async (voiceUrl: string) => {
+    const cached = workflowAudioDurationCacheRef.current.get(voiceUrl);
+    if (typeof cached === 'number') {
+      return cached;
+    }
+
+    const src = voiceUrl.startsWith('/') && typeof window !== 'undefined' && window.location
+      ? `${window.location.origin}${voiceUrl}`
+      : voiceUrl;
+
+    const duration = await new Promise<number>((resolve, reject) => {
+      const audio = new Audio();
+      const cleanup = () => {
+        audio.removeAttribute('src');
+        audio.load();
+      };
+
+      audio.preload = 'metadata';
+      audio.onloadedmetadata = () => {
+        const nextDuration = Number.isFinite(audio.duration) ? audio.duration : 0;
+        cleanup();
+        resolve(nextDuration);
+      };
+      audio.onerror = () => {
+        cleanup();
+        reject(new Error('Failed to read workflow voice duration.'));
+      };
+      audio.src = src;
+    });
+
+    workflowAudioDurationCacheRef.current.set(voiceUrl, duration);
+    return duration;
+  };
+
   const handleGenerate = async () => {
     const finalPrompt = composedImagePrompt.trim();
     if (!finalPrompt) {
@@ -635,7 +758,7 @@ export default function Home() {
         width,
         height,
         batchSize,
-        model,
+        model: resolvedImageModel,
         quality,
         inputImages,
       });
@@ -649,7 +772,7 @@ export default function Home() {
             urls.push(item.url);
           }
         });
-      } else if (model === 'a2e') {
+      } else if (resolvedImageModel === 'a2e') {
         const responseData = response.data?.data;
         if (responseData && Array.isArray(responseData.images)) {
           urls.push(...responseData.images);
@@ -1098,7 +1221,7 @@ export default function Home() {
         width,
         height,
         batchSize: 1,
-        model,
+        model: resolvedImageModel,
         quality,
         inputImages,
       });
@@ -1112,7 +1235,7 @@ export default function Home() {
             urls.push(item.url);
           }
         });
-      } else if (model === 'a2e') {
+      } else if (resolvedImageModel === 'a2e') {
         const responseData = response.data?.data;
         if (responseData && Array.isArray(responseData.images)) {
           urls.push(...responseData.images);
@@ -1128,6 +1251,92 @@ export default function Home() {
       return urls[0];
     } finally {
       setLoading(false);
+    }
+  };
+
+  const generateWorkflowVideo = async (segment: WorkflowSegment) => {
+    const segmentPrompt = (segment.video_prompt || segment.text).trim();
+    if (!segmentPrompt) {
+      throw new Error('This workflow segment needs text or a video prompt before generating a video.');
+    }
+
+    const startImageUrl = segment.image_url?.trim();
+    if (!startImageUrl) {
+      throw new Error('Generate an image for this workflow segment before generating video.');
+    }
+
+    let duration = videoDuration;
+    if (segment.voice_url) {
+      try {
+        const audioDurationSeconds = await getWorkflowAudioDurationSeconds(segment.voice_url);
+        if (audioDurationSeconds > 0) {
+          duration = getClosestSupportedFalVideoDuration(videoModel, audioDurationSeconds);
+        }
+      } catch (err) {
+        console.error('Failed to derive workflow video duration from voice clip', err);
+      }
+    }
+
+    setVideoPrompt(segmentPrompt);
+    setVideoImageUrl(startImageUrl);
+    setVideoGenerating(true);
+
+    try {
+      return await generateFalVideo({
+        prompt: segmentPrompt,
+        imageUrl: startImageUrl,
+        model: videoModel,
+        duration,
+        resolution: videoResolution,
+        aspectRatio: videoAspectRatio,
+      });
+    } finally {
+      setVideoGenerating(false);
+    }
+  };
+
+  const handleGenerateVideo = async () => {
+    const promptText = videoPrompt.trim();
+    if (!promptText) {
+      setAlertDialog({
+        title: 'Video prompt needed',
+        message: 'Write a video prompt before generating a clip.',
+        confirmLabel: 'Okay',
+      });
+      return;
+    }
+
+    const startImageUrl = videoImageUrl.trim();
+    if (!startImageUrl) {
+      setAlertDialog({
+        title: 'Start image needed',
+        message: 'Choose a generated image before generating video.',
+        confirmLabel: 'Okay',
+      });
+      return;
+    }
+
+    setVideoGenerating(true);
+
+    try {
+      const url = await generateFalVideo({
+        prompt: promptText,
+        imageUrl: startImageUrl,
+        model: videoModel,
+        duration: videoDuration,
+        resolution: videoResolution,
+        aspectRatio: videoAspectRatio,
+      });
+      setAlertDialog({
+        title: 'Video saved',
+        message: `Fal generated a video and saved it locally.\n${url}`,
+        confirmLabel: 'Nice',
+      });
+    } catch (err) {
+      console.error('Video generation failed', err);
+      showErrorDialog('Video generation failed', err);
+    } finally {
+      setVideoGenerating(false);
     }
   };
 
@@ -1173,13 +1382,20 @@ export default function Home() {
             inputPromptPrefix={promptPrefix}
             inputPromptSuffix={promptSuffix}
             inputReferenceImages={inputImages}
+            isFalImageModel={isFalModel}
             isGeminiModel={isGeminiModel}
             isOpenAiModel={isOpenAiModel}
+            isSelfHostImageModel={isSelfHostModel}
             isSavingDisabled={!composedImagePrompt.trim()}
             isSubmitting={loading}
+            falImageEstimate={falImageEstimate}
+            falImageModel={falImageModel}
+            falImageModelOptions={FAL_IMAGE_MODEL_OPTIONS}
             model={model}
             quality={quality}
             savedPrompts={savedPrompts}
+            selfHostImageModel={selfHostImageModel}
+            selfHostImageModelOptions={SELF_HOST_IMAGE_MODEL_OPTIONS}
             totalCost={totalCost}
             width={width}
             onAddReferenceImages={addReferenceImages}
@@ -1191,6 +1407,7 @@ export default function Home() {
             }}
             onClearReferenceImages={clearReferenceImages}
             onDeleteSavedPrompt={(id) => { void handleDeletePrompt(id); }}
+            onFalImageModelChange={setFalImageModel}
             onGenerateImage={() => { void handleGenerate(); }}
             onGeminiAspectRatioChange={setGeminiAspectRatio}
             onHeightChange={setHeight}
@@ -1204,6 +1421,7 @@ export default function Home() {
             onQualityChange={setQuality}
             onRemoveReferenceImage={removeReferenceImage}
             onSavePrompt={() => { void handleSavePrompt(); }}
+            onSelfHostImageModelChange={setSelfHostImageModel}
             onTogglePreviousImage={toggleReferenceImage}
             onWidthChange={setWidth}
           />
@@ -1225,6 +1443,36 @@ export default function Home() {
             onPromptChange={setTtsPrompt}
             onRefreshSavedAudio={() => { void loadSavedAudioClips(); }}
             onSelectedVoiceIdChange={setSelectedTtsVoiceId}
+          />
+        </section>
+
+        <section id="video-generator" className="shortcut-target" aria-label="Video generator">
+          <VideoGeneratorSection
+            aspectRatio={videoAspectRatio}
+            availableImages={availableImages}
+            duration={videoDuration}
+            imageUrl={videoImageUrl}
+            isGenerating={videoGenerating}
+            model={videoModel}
+            modelOptions={FAL_VIDEO_MODEL_OPTIONS}
+            prompt={videoPrompt}
+            resolution={videoResolution}
+            savedVideoClips={savedVideoClips}
+            supportedDurations={supportedVideoDurations}
+            onAspectRatioChange={setVideoAspectRatio}
+            onDurationChange={setVideoDuration}
+            onGenerateVideo={() => { void handleGenerateVideo(); }}
+            onImageUrlChange={setVideoImageUrl}
+            onModelChange={(value) => {
+              setVideoModel(value);
+              const nextDurations = getSupportedFalVideoDurations(value);
+              if (!nextDurations.includes(videoDuration)) {
+                setVideoDuration(nextDurations[0]);
+              }
+            }}
+            onPromptChange={setVideoPrompt}
+            onRefreshSavedVideos={() => { void loadSavedVideoClips(); }}
+            onResolutionChange={setVideoResolution}
           />
         </section>
 
@@ -1306,11 +1554,12 @@ export default function Home() {
 
         <section id="workflows" className="shortcut-target" aria-label="Workflows">
           <WorkflowBoardSection
-            isLoading={loading || ttsGenerating}
+            isLoading={loading || ttsGenerating || videoGenerating}
             selectedVoice={selectedTtsVoice}
             workflows={workflows}
             onError={showErrorDialog}
             onGenerateImage={generateWorkflowImage}
+            onGenerateVideo={generateWorkflowVideo}
             onReload={loadWorkflows}
           />
         </section>

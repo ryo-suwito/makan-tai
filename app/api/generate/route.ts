@@ -4,7 +4,14 @@ import { mkdir, readFile, writeFile } from 'fs/promises';
 import { extname, join } from 'path';
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
+import {
+  clampFalImageBatchSize,
+  getClosestFalImageAspectRatio,
+  getFalImageModelConfig,
+  isFalImageModelId,
+} from '../../../lib/fal-image-models';
 import { getClosestGeminiAspectRatio, isGeminiImageModel, isOpenAiImageModel } from '../../../lib/image-models';
+import { isSelfHostImageModelId } from '../../../lib/self-host-image-models';
 
 export const runtime = 'nodejs';
 
@@ -123,6 +130,130 @@ async function fetchImageSourceAsInlineData(source: string): Promise<GeminiInlin
   }
 
   throw new Error('Failed to convert reference image to inline data.');
+}
+
+async function persistFalImageResult(
+  req: NextRequest,
+  images: Array<{ b64_json?: string; content_type?: string; url?: string }>,
+) {
+  const persisted: { url: string }[] = [];
+
+  await Promise.all(
+    images.map(async (item, index) => {
+      try {
+        let buffer: Buffer | null = null;
+        let extension = extensionFromMimeType(item.content_type || 'image/png');
+
+        if (item.url) {
+          const resImg = await fetch(item.url);
+          if (!resImg.ok) {
+            throw new Error(`Failed to fetch image: ${resImg.statusText}`);
+          }
+
+          buffer = Buffer.from(await resImg.arrayBuffer());
+          extension = extname(new URL(item.url).pathname) || extension;
+        } else if (item.b64_json) {
+          buffer = Buffer.from(item.b64_json, 'base64');
+        }
+
+        if (!buffer) {
+          return;
+        }
+
+        const filename = `fal_${Date.now()}_${index}${extension}`;
+        persisted.push({ url: await persistGeneratedImage(req, buffer, filename) });
+      } catch (err) {
+        console.error('Failed to persist Fal image', err);
+      }
+    }),
+  );
+
+  return persisted;
+}
+
+async function buildFalImageRequest(
+  model: string,
+  params: {
+    batchSize: number;
+    height: number;
+    inputImages: string[];
+    prompt: string;
+    width: number;
+  },
+) {
+  if (!isFalImageModelId(model)) {
+    return null;
+  }
+
+  const config = getFalImageModelConfig(model);
+  const safeBatchSize = clampFalImageBatchSize(model, params.batchSize);
+  const aspectRatio = getClosestFalImageAspectRatio(params.width, params.height);
+  const normalizedImages = await Promise.all(params.inputImages.map((source) => fetchImageSourceAsDataUrl(source)));
+
+  if (model === 'seedream-v4') {
+    return {
+      endpoint: normalizedImages.length > 0 ? config.editEndpoint! : config.textEndpoint,
+      payload: {
+        prompt: params.prompt,
+        image_size: {
+          width: params.width,
+          height: params.height,
+        },
+        num_images: safeBatchSize,
+        max_images: 1,
+        enable_safety_checker: true,
+        enhance_prompt_mode: 'standard',
+        ...(normalizedImages.length > 0 ? { image_urls: normalizedImages.slice(-10) } : {}),
+      },
+    };
+  }
+
+  if (model === 'flux-kontext-pro') {
+    return {
+      endpoint: normalizedImages.length > 0 ? config.editEndpoint! : config.textEndpoint,
+      payload: {
+        prompt: params.prompt,
+        num_images: safeBatchSize,
+        output_format: 'jpeg',
+        safety_tolerance: '2',
+        enhance_prompt: false,
+        aspect_ratio: aspectRatio,
+        ...(normalizedImages.length > 0 ? { image_url: normalizedImages[0] } : {}),
+      },
+    };
+  }
+
+  if (model === 'nano-banana') {
+    return {
+      endpoint: normalizedImages.length > 0 ? config.editEndpoint! : config.textEndpoint,
+      payload: {
+        prompt: params.prompt,
+        num_images: safeBatchSize,
+        aspect_ratio: aspectRatio,
+        output_format: 'png',
+        safety_tolerance: '4',
+        sync_mode: false,
+        limit_generations: false,
+        ...(normalizedImages.length > 0 ? { image_urls: normalizedImages.slice(-10) } : {}),
+      },
+    };
+  }
+
+  return {
+    endpoint: normalizedImages.length > 0 ? config.editEndpoint! : config.textEndpoint,
+    payload: {
+      prompt: params.prompt,
+      image_size: {
+        width: params.width,
+        height: params.height,
+      },
+      num_images: safeBatchSize,
+      enable_safety_checker: true,
+      output_format: 'png',
+      use_turbo: true,
+      ...(normalizedImages.length > 0 ? { image_url: normalizedImages[0] } : {}),
+    },
+  };
 }
 
 export async function POST(req: NextRequest) {
@@ -265,6 +396,84 @@ export async function POST(req: NextRequest) {
         meta: {
           aspectRatio,
           provider: 'gemini',
+        },
+      });
+    }
+
+    if (isSelfHostImageModelId(model)) {
+      const selfHostBase = process.env.SELF_HOST_INFERENCE_BASE || 'http://localhost:8000';
+      const normalizedImages = await Promise.all(inputImages.map((source) => fetchImageSourceAsDataUrl(source)));
+      const response = await axios.post(
+        `${selfHostBase}/api/generate`,
+        {
+          prompt,
+          width,
+          height,
+          batchSize,
+          model,
+          quality,
+          inputImages: normalizedImages,
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          timeout: 1000 * 60 * 10,
+        },
+      );
+
+      const images = Array.isArray(response.data?.data)
+        ? response.data.data.map((item: { b64_json?: string; content_type?: string; url?: string }) => ({
+            ...item,
+            url: item.url ? new URL(item.url, selfHostBase).toString() : item.url,
+          }))
+        : [];
+
+      if (images.length === 0) {
+        throw new Error('Self-host server did not return any images.');
+      }
+
+      return NextResponse.json({
+        data: await persistFalImageResult(req, images),
+        meta: {
+          provider: 'selfhost',
+          model,
+        },
+      });
+    }
+
+    const falRequest = await buildFalImageRequest(model, {
+      prompt,
+      width,
+      height,
+      batchSize,
+      inputImages,
+    });
+
+    if (falRequest) {
+      const falKey = process.env.FAL_KEY;
+      if (!falKey) {
+        return NextResponse.json({ error: 'Missing FAL_KEY' }, { status: 500 });
+      }
+
+      const response = await axios.post(`https://fal.run/${falRequest.endpoint}`, falRequest.payload, {
+        headers: {
+          Authorization: `Key ${falKey}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 1000 * 60 * 10,
+      });
+
+      const images = Array.isArray(response.data?.images) ? response.data.images : [];
+      if (images.length === 0) {
+        throw new Error('Fal did not return any images.');
+      }
+
+      return NextResponse.json({
+        data: await persistFalImageResult(req, images),
+        meta: {
+          provider: 'fal',
+          model,
         },
       });
     }
