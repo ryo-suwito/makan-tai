@@ -12,6 +12,7 @@ import {
   OPENROUTER_FREE_OPTION,
   mapOpenRouterModelToOption,
   type AlertDialogState,
+  type FalImageSettings,
   type CartesiaVoice,
   type FalImageModelOption,
   type FalVideoAspectRatio,
@@ -39,7 +40,9 @@ import { WorkflowBoardSection } from '@/components/home/WorkflowBoardSection';
 import { estimateTotalCost } from '@/lib/cost';
 import {
   DEFAULT_FAL_IMAGE_MODEL,
+  DEFAULT_FAL_IMAGE_SETTINGS,
   FAL_IMAGE_MODEL_OPTIONS,
+  falImageModelRequiresReferenceImages,
   estimateFalImageTotalCost,
 } from '@/lib/fal-image-models';
 import {
@@ -135,6 +138,9 @@ export default function Home() {
   const [batchSize, setBatchSize] = useState(1);
   const [model, setModel] = useState<ImageGenerationModel>('gpt-image-2');
   const [falImageModel, setFalImageModel] = useState<FalImageModelOption>(DEFAULT_FAL_IMAGE_MODEL);
+  const [falImageSettings, setFalImageSettings] = useState<FalImageSettings>({
+    qwenImageEdit2511: { ...DEFAULT_FAL_IMAGE_SETTINGS.qwenImageEdit2511 },
+  });
   const [selfHostImageModel, setSelfHostImageModel] = useState(DEFAULT_SELF_HOST_IMAGE_MODEL);
   const [quality, setQuality] = useState<'low' | 'medium' | 'high'>('medium');
   const [inputImages, setInputImages] = useState<string[]>([]);
@@ -741,6 +747,17 @@ export default function Home() {
 
   const handleGenerate = async () => {
     const finalPrompt = composedImagePrompt.trim();
+    const falRequiresReferenceImages = isFalModel && falImageModelRequiresReferenceImages(falImageModel.value);
+
+    if (falRequiresReferenceImages && inputImages.length === 0) {
+      setAlertDialog({
+        title: 'Reference image needed',
+        message: `${falImageModel.label} is an edit-only Fal.ai model. Select at least one reference image before generating.`,
+        confirmLabel: 'Okay',
+      });
+      return;
+    }
+
     if (!finalPrompt) {
       setAlertDialog({
         title: 'Image prompt needed',
@@ -761,6 +778,7 @@ export default function Home() {
         model: resolvedImageModel,
         quality,
         inputImages,
+        falImageSettings,
       });
 
       const urls: string[] = [];
@@ -1390,6 +1408,7 @@ export default function Home() {
             isSubmitting={loading}
             falImageEstimate={falImageEstimate}
             falImageModel={falImageModel}
+            falImageSettings={falImageSettings}
             falImageModelOptions={FAL_IMAGE_MODEL_OPTIONS}
             model={model}
             quality={quality}
@@ -1408,6 +1427,7 @@ export default function Home() {
             onClearReferenceImages={clearReferenceImages}
             onDeleteSavedPrompt={(id) => { void handleDeletePrompt(id); }}
             onFalImageModelChange={setFalImageModel}
+            onFalImageSettingsChange={setFalImageSettings}
             onGenerateImage={() => { void handleGenerate(); }}
             onGeminiAspectRatioChange={setGeminiAspectRatio}
             onHeightChange={setHeight}

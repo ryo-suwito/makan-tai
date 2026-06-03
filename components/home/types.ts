@@ -8,7 +8,11 @@ export type FalImageModelId =
   | 'seedream-v4'
   | 'flux-kontext-pro'
   | 'nano-banana'
-  | 'qwen-image';
+  | 'qwen-image'
+  | 'qwen-image-edit-2511';
+
+export type FalImageOutputFormat = 'png' | 'jpeg' | 'webp';
+export type FalImageAcceleration = 'none' | 'regular' | 'high';
 
 export interface FalImageModelOption {
   label: string;
@@ -16,6 +20,20 @@ export interface FalImageModelOption {
   price: string;
   unit: 'image' | 'megapixel';
   value: FalImageModelId;
+}
+
+export interface FalQwenImageEdit2511Settings {
+  acceleration: FalImageAcceleration;
+  enableSafetyChecker: boolean;
+  guidanceScale: number;
+  negativePrompt: string;
+  numInferenceSteps: number;
+  outputFormat: FalImageOutputFormat;
+  seed: number | null;
+}
+
+export interface FalImageSettings {
+  qwenImageEdit2511: FalQwenImageEdit2511Settings;
 }
 
 export type SelfHostImageModelId = 'flux-schnell' | 'flux-dev';

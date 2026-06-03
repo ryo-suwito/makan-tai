@@ -1,4 +1,9 @@
-import type { FalImageModelId, FalImageModelOption } from '@/components/home/types';
+import type {
+  FalImageModelId,
+  FalImageModelOption,
+  FalImageSettings,
+  FalQwenImageEdit2511Settings,
+} from '@/components/home/types';
 
 const FAL_IMAGE_ASPECT_RATIOS = ['21:9', '16:9', '4:3', '3:2', '1:1', '2:3', '3:4', '9:16', '9:21'] as const;
 type FalImageAspectRatio = typeof FAL_IMAGE_ASPECT_RATIOS[number];
@@ -6,9 +11,24 @@ type FalImageAspectRatio = typeof FAL_IMAGE_ASPECT_RATIOS[number];
 interface FalImageModelConfig extends FalImageModelOption {
   editEndpoint?: string;
   maxBatchSize: number;
+  requiresReferenceImages?: boolean;
   pricePerUnit: number;
-  textEndpoint: string;
+  textEndpoint?: string;
 }
+
+export const DEFAULT_FAL_QWEN_IMAGE_EDIT_2511_SETTINGS: FalQwenImageEdit2511Settings = {
+  negativePrompt: '',
+  numInferenceSteps: 28,
+  guidanceScale: 4.5,
+  acceleration: 'regular',
+  enableSafetyChecker: true,
+  outputFormat: 'png',
+  seed: null,
+};
+
+export const DEFAULT_FAL_IMAGE_SETTINGS: FalImageSettings = {
+  qwenImageEdit2511: DEFAULT_FAL_QWEN_IMAGE_EDIT_2511_SETTINGS,
+};
 
 const FAL_IMAGE_MODEL_CONFIG: Record<FalImageModelId, FalImageModelConfig> = {
   'seedream-v4': {
@@ -55,6 +75,17 @@ const FAL_IMAGE_MODEL_CONFIG: Record<FalImageModelId, FalImageModelConfig> = {
     textEndpoint: 'fal-ai/qwen-image',
     editEndpoint: 'fal-ai/qwen-image/image-to-image',
   },
+  'qwen-image-edit-2511': {
+    value: 'qwen-image-edit-2511',
+    label: 'Qwen Image Edit 2511',
+    unit: 'megapixel',
+    price: '$0.03',
+    outputPerDollar: '33 megapixels',
+    maxBatchSize: 4,
+    pricePerUnit: 0.03,
+    editEndpoint: 'fal-ai/qwen-image-edit-2511',
+    requiresReferenceImages: true,
+  },
 };
 
 export const FAL_IMAGE_MODEL_OPTIONS = Object.values(FAL_IMAGE_MODEL_CONFIG);
@@ -71,6 +102,10 @@ export function isFalImageModelId(value: string): value is FalImageModelId {
 export function clampFalImageBatchSize(model: FalImageModelId, batchSize: number) {
   const safeBatchSize = Math.max(1, Math.floor(batchSize || 1));
   return Math.min(safeBatchSize, getFalImageModelConfig(model).maxBatchSize);
+}
+
+export function falImageModelRequiresReferenceImages(model: FalImageModelId) {
+  return Boolean(getFalImageModelConfig(model).requiresReferenceImages);
 }
 
 export function estimateFalImageTotalCost(model: FalImageModelId, width: number, height: number, batchSize: number) {

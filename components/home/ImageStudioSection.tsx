@@ -10,6 +10,7 @@ import {
   type ImageGenerationModel,
 } from '@/lib/image-models';
 import type {
+  FalImageSettings,
   FalImageModelOption,
   SavedPrompt,
   SelfHostImageModelOption,
@@ -32,6 +33,7 @@ interface ImageStudioSectionProps {
   isSubmitting: boolean;
   falImageEstimate: string | null;
   falImageModel: FalImageModelOption;
+  falImageSettings: FalImageSettings;
   falImageModelOptions: FalImageModelOption[];
   model: ImageGenerationModel;
   quality: Quality;
@@ -47,6 +49,7 @@ interface ImageStudioSectionProps {
   onClearReferenceImages: () => void;
   onDeleteSavedPrompt: (id: number) => void;
   onFalImageModelChange: (option: FalImageModelOption) => void;
+  onFalImageSettingsChange: (settings: FalImageSettings) => void;
   onGenerateImage: () => void;
   onGeminiAspectRatioChange: (aspectRatio: GeminiAspectRatio) => void;
   onHeightChange: (value: number) => void;
@@ -86,6 +89,7 @@ export function ImageStudioSection({
   isSubmitting,
   falImageEstimate,
   falImageModel,
+  falImageSettings,
   falImageModelOptions,
   model,
   quality,
@@ -101,6 +105,7 @@ export function ImageStudioSection({
   onClearReferenceImages,
   onDeleteSavedPrompt,
   onFalImageModelChange,
+  onFalImageSettingsChange,
   onGenerateImage,
   onGeminiAspectRatioChange,
   onHeightChange,
@@ -321,6 +326,136 @@ export function ImageStudioSection({
             <p className="text-sm text-gray-600 mb-2">
               Fixed Fal.ai model list with current billing metadata. No favorites are stored for image models.
             </p>
+
+            {falImageModel.value === 'qwen-image-edit-2511' && (
+              <div className="system-prompt-library mb-3">
+                <div className="system-prompt-library-header">
+                  <strong>Qwen Image Edit 2511 Settings</strong>
+                </div>
+                <p className="text-sm text-gray-600 mb-3">
+                  Edit-only model. Requires at least one reference image and exposes Qwen 2511-specific inference controls.
+                </p>
+                <label className="block mb-1">Negative Prompt</label>
+                <textarea
+                  value={falImageSettings.qwenImageEdit2511.negativePrompt}
+                  onChange={(event) => onFalImageSettingsChange({
+                    ...falImageSettings,
+                    qwenImageEdit2511: {
+                      ...falImageSettings.qwenImageEdit2511,
+                      negativePrompt: event.target.value,
+                    },
+                  })}
+                  className="w-full p-2 border rounded mb-3"
+                  rows={2}
+                  placeholder="Optional things to avoid..."
+                />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <label className="block mb-1">Inference Steps</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={60}
+                      value={falImageSettings.qwenImageEdit2511.numInferenceSteps}
+                      onChange={(event) => onFalImageSettingsChange({
+                        ...falImageSettings,
+                        qwenImageEdit2511: {
+                          ...falImageSettings.qwenImageEdit2511,
+                          numInferenceSteps: Math.max(1, Number(event.target.value) || 1),
+                        },
+                      })}
+                      className="w-full p-2 border rounded"
+                    />
+                  </div>
+                  <div>
+                    <label className="block mb-1">Guidance Scale</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={20}
+                      step={0.1}
+                      value={falImageSettings.qwenImageEdit2511.guidanceScale}
+                      onChange={(event) => onFalImageSettingsChange({
+                        ...falImageSettings,
+                        qwenImageEdit2511: {
+                          ...falImageSettings.qwenImageEdit2511,
+                          guidanceScale: Math.max(0, Number(event.target.value) || 0),
+                        },
+                      })}
+                      className="w-full p-2 border rounded"
+                    />
+                  </div>
+                  <div>
+                    <label className="block mb-1">Acceleration</label>
+                    <select
+                      value={falImageSettings.qwenImageEdit2511.acceleration}
+                      onChange={(event) => onFalImageSettingsChange({
+                        ...falImageSettings,
+                        qwenImageEdit2511: {
+                          ...falImageSettings.qwenImageEdit2511,
+                          acceleration: event.target.value as FalImageSettings['qwenImageEdit2511']['acceleration'],
+                        },
+                      })}
+                      className="w-full p-2 border rounded"
+                    >
+                      <option value="none">None</option>
+                      <option value="regular">Regular</option>
+                      <option value="high">High</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block mb-1">Output Format</label>
+                    <select
+                      value={falImageSettings.qwenImageEdit2511.outputFormat}
+                      onChange={(event) => onFalImageSettingsChange({
+                        ...falImageSettings,
+                        qwenImageEdit2511: {
+                          ...falImageSettings.qwenImageEdit2511,
+                          outputFormat: event.target.value as FalImageSettings['qwenImageEdit2511']['outputFormat'],
+                        },
+                      })}
+                      className="w-full p-2 border rounded"
+                    >
+                      <option value="png">PNG</option>
+                      <option value="jpeg">JPEG</option>
+                      <option value="webp">WebP</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block mb-1">Seed</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={falImageSettings.qwenImageEdit2511.seed ?? ''}
+                      onChange={(event) => onFalImageSettingsChange({
+                        ...falImageSettings,
+                        qwenImageEdit2511: {
+                          ...falImageSettings.qwenImageEdit2511,
+                          seed: event.target.value === '' ? null : Math.max(0, Math.floor(Number(event.target.value) || 0)),
+                        },
+                      })}
+                      className="w-full p-2 border rounded"
+                      placeholder="Optional"
+                    />
+                  </div>
+                  <label className="inline-flex items-center mt-7">
+                    <input
+                      type="checkbox"
+                      className="mr-2"
+                      checked={falImageSettings.qwenImageEdit2511.enableSafetyChecker}
+                      onChange={(event) => onFalImageSettingsChange({
+                        ...falImageSettings,
+                        qwenImageEdit2511: {
+                          ...falImageSettings.qwenImageEdit2511,
+                          enableSafetyChecker: event.target.checked,
+                        },
+                      })}
+                    />
+                    Enable safety checker
+                  </label>
+                </div>
+              </div>
+            )}
           </>
         )}
 

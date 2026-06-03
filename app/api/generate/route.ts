@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile } from 'fs/promises';
 import { extname, join } from 'path';
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
+import type { FalImageSettings } from '@/components/home/types';
 import {
   clampFalImageBatchSize,
   getClosestFalImageAspectRatio,
@@ -23,6 +24,7 @@ interface GenerateBody {
   model: string;
   quality: string;
   inputImages?: string[];
+  falImageSettings?: FalImageSettings;
 }
 
 interface GeminiInlineDataPart {
@@ -175,6 +177,7 @@ async function buildFalImageRequest(
   model: string,
   params: {
     batchSize: number;
+    falImageSettings?: FalImageSettings;
     height: number;
     inputImages: string[];
     prompt: string;
@@ -239,6 +242,29 @@ async function buildFalImageRequest(
     };
   }
 
+  if (model === 'qwen-image-edit-2511') {
+    const settings = params.falImageSettings?.qwenImageEdit2511;
+    return {
+      endpoint: config.editEndpoint!,
+      payload: {
+        prompt: params.prompt,
+        negative_prompt: settings?.negativePrompt || '',
+        image_size: {
+          width: params.width,
+          height: params.height,
+        },
+        image_urls: normalizedImages,
+        num_inference_steps: settings?.numInferenceSteps ?? 28,
+        guidance_scale: settings?.guidanceScale ?? 4.5,
+        num_images: safeBatchSize,
+        enable_safety_checker: settings?.enableSafetyChecker ?? true,
+        output_format: settings?.outputFormat ?? 'png',
+        acceleration: settings?.acceleration ?? 'regular',
+        ...(typeof settings?.seed === 'number' ? { seed: settings.seed } : {}),
+      },
+    };
+  }
+
   return {
     endpoint: normalizedImages.length > 0 ? config.editEndpoint! : config.textEndpoint,
     payload: {
@@ -259,7 +285,7 @@ async function buildFalImageRequest(
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as GenerateBody;
-    const { prompt, width, height, batchSize, model, quality, inputImages = [] } = body;
+    const { prompt, width, height, batchSize, model, quality, inputImages = [], falImageSettings } = body;
 
     if (!prompt || !model) {
       return NextResponse.json({ error: 'Missing prompt or model' }, { status: 400 });
@@ -448,6 +474,7 @@ export async function POST(req: NextRequest) {
       height,
       batchSize,
       inputImages,
+      falImageSettings,
     });
 
     if (falRequest) {
