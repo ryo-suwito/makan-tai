@@ -127,6 +127,12 @@ export function ImageStudioSection({
 }: ImageStudioSectionProps) {
   const [deviceReferenceImages, setDeviceReferenceImages] = useState<DeviceReferenceImage[]>([]);
   const [visibleAvailableCount, setVisibleAvailableCount] = useState(18);
+  const [horizontalAngleDraft, setHorizontalAngleDraft] = useState(
+    String(falImageSettings.qwenImageEdit2511MultipleAngles.horizontalAngle),
+  );
+  const [verticalAngleDraft, setVerticalAngleDraft] = useState(
+    String(falImageSettings.qwenImageEdit2511MultipleAngles.verticalAngle),
+  );
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const galleryScrollRef = useRef<HTMLDivElement | null>(null);
   const gallerySentinelRef = useRef<HTMLDivElement | null>(null);
@@ -144,6 +150,14 @@ export function ImageStudioSection({
       return Math.min(next, availableImages.length || 18);
     });
   }, [availableImages.length]);
+
+  useEffect(() => {
+    setHorizontalAngleDraft(String(falImageSettings.qwenImageEdit2511MultipleAngles.horizontalAngle));
+  }, [falImageSettings.qwenImageEdit2511MultipleAngles.horizontalAngle]);
+
+  useEffect(() => {
+    setVerticalAngleDraft(String(falImageSettings.qwenImageEdit2511MultipleAngles.verticalAngle));
+  }, [falImageSettings.qwenImageEdit2511MultipleAngles.verticalAngle]);
 
   useEffect(() => {
     const root = galleryScrollRef.current;
@@ -246,6 +260,24 @@ export function ImageStudioSection({
           ? { ...item, scale }
           : item
       )),
+    });
+  };
+
+  const commitMultipleAngleValue = (field: 'horizontalAngle' | 'verticalAngle', rawValue: string) => {
+    const fallback = falImageSettings.qwenImageEdit2511MultipleAngles[field];
+    const parsed = Number(rawValue);
+    const nextValue = Number.isFinite(parsed)
+      ? field === 'horizontalAngle'
+        ? Math.max(0, Math.min(360, parsed))
+        : Math.max(-30, Math.min(90, parsed))
+      : fallback;
+
+    onFalImageSettingsChange({
+      ...falImageSettings,
+      qwenImageEdit2511MultipleAngles: {
+        ...falImageSettings.qwenImageEdit2511MultipleAngles,
+        [field]: nextValue,
+      },
     });
   };
 
@@ -583,38 +615,32 @@ export function ImageStudioSection({
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                   <div>
-                    <label className="block mb-1">Horizontal Angle</label>
+                    <label className="block mb-1">Horizontal Angle <span className="text-xs text-gray-500">0 to 360</span></label>
                     <input
                       type="number"
                       min={0}
                       max={360}
                       step={1}
-                      value={falImageSettings.qwenImageEdit2511MultipleAngles.horizontalAngle}
-                      onChange={(event) => onFalImageSettingsChange({
-                        ...falImageSettings,
-                        qwenImageEdit2511MultipleAngles: {
-                          ...falImageSettings.qwenImageEdit2511MultipleAngles,
-                          horizontalAngle: Math.max(0, Math.min(360, Number(event.target.value) || 0)),
-                        },
-                      })}
+                      value={horizontalAngleDraft}
+                      onChange={(event) => setHorizontalAngleDraft(event.target.value)}
+                      onFocus={(event) => event.currentTarget.select()}
+                      onBlur={(event) => commitMultipleAngleValue('horizontalAngle', event.target.value)}
+                      placeholder="0"
                       className="w-full p-2 border rounded"
                     />
                   </div>
                   <div>
-                    <label className="block mb-1">Vertical Angle</label>
+                    <label className="block mb-1">Vertical Angle <span className="text-xs text-gray-500">-30 to 90</span></label>
                     <input
                       type="number"
-                      min={-90}
+                      min={-30}
                       max={90}
                       step={1}
-                      value={falImageSettings.qwenImageEdit2511MultipleAngles.verticalAngle}
-                      onChange={(event) => onFalImageSettingsChange({
-                        ...falImageSettings,
-                        qwenImageEdit2511MultipleAngles: {
-                          ...falImageSettings.qwenImageEdit2511MultipleAngles,
-                          verticalAngle: Math.max(-90, Math.min(90, Number(event.target.value) || 0)),
-                        },
-                      })}
+                      value={verticalAngleDraft}
+                      onChange={(event) => setVerticalAngleDraft(event.target.value)}
+                      onFocus={(event) => event.currentTarget.select()}
+                      onBlur={(event) => commitMultipleAngleValue('verticalAngle', event.target.value)}
+                      placeholder="0"
                       className="w-full p-2 border rounded"
                     />
                   </div>
