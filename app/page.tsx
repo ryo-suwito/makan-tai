@@ -129,6 +129,30 @@ async function getCartesiaToken(): Promise<string> {
   return data.token;
 }
 
+interface GeneratedWorkflowVoiceResult {
+  srt: string | null;
+  voiceUrl: string;
+}
+
+interface SavedGeneratedAudioResult extends GeneratedAudioClip {
+  createdAt: string;
+  filename: string;
+  promptPreview: string;
+  srt: string | null;
+  url: string;
+  voiceId: string;
+  voiceName: string | null;
+}
+
+function toRelativeAssetUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.pathname;
+  } catch {
+    return value;
+  }
+}
+
 export default function Home() {
   const [promptPrefix, setPromptPrefix] = useState('');
   const [prompt, setPrompt] = useState('');
@@ -641,23 +665,27 @@ export default function Home() {
   };
 
   const handleGenerateAudio = async () => {
-    const transcript = ttsPrompt.trim();
-    if (!transcript) {
+    try {
+      await submitAudioGeneration({ prompt: ttsPrompt });
       setAlertDialog({
-        title: 'Speech prompt needed',
-        message: 'Write a text prompt first, then generate a saved audio file.',
-        confirmLabel: 'Okay',
+        title: 'Audio saved',
+        message: `${selectedTtsVoice?.name ?? 'Voice render'} was stored on the server and added to your saved clips.`,
+        confirmLabel: 'Nice',
       });
-      return;
+    } catch (err) {
+      console.error('Cartesia generation failed', err);
+      showErrorDialog('Audio generation failed', err);
+    }
+  };
+
+  const submitAudioGeneration = async (input: { prompt: string }): Promise<SavedGeneratedAudioResult> => {
+    const transcript = input.prompt.trim();
+    if (!transcript) {
+      throw new Error('Write a text prompt first, then generate a saved audio file.');
     }
 
     if (!selectedTtsVoiceId) {
-      setAlertDialog({
-        title: 'Voice needed',
-        message: 'Choose one of your Cartesia voices before generating audio.',
-        confirmLabel: 'Okay',
-      });
-      return;
+      throw new Error('Choose one of your Cartesia voices before generating audio.');
     }
 
     setTtsGenerating(true);
@@ -670,20 +698,13 @@ export default function Home() {
         voiceName: selectedTtsVoice?.name ?? null,
       });
 
-      const clip = response.data?.data as GeneratedAudioClip | undefined;
+      const clip = response.data?.data as SavedGeneratedAudioResult | undefined;
       if (!clip?.url) {
         throw new Error('Cartesia did not return a saved audio file.');
       }
 
       await loadSavedAudioClips();
-      setAlertDialog({
-        title: 'Audio saved',
-        message: `${selectedTtsVoice?.name ?? 'Voice render'} was stored on the server and added to your saved clips.`,
-        confirmLabel: 'Nice',
-      });
-    } catch (err) {
-      console.error('Cartesia generation failed', err);
-      showErrorDialog('Audio generation failed', err);
+      return clip;
     } finally {
       setTtsGenerating(false);
     }
@@ -749,27 +770,23 @@ export default function Home() {
     return duration;
   };
 
-  const handleGenerate = async () => {
-    const finalPrompt = composedImagePrompt.trim();
+  const submitImageGeneration = async (input?: {
+    batchSize?: number;
+    mainPrompt?: string;
+  }) => {
+    const mainPrompt = input?.mainPrompt ?? prompt;
+    const finalPrompt = [promptPrefix.trim(), mainPrompt.trim(), promptSuffix.trim()]
+      .filter(Boolean)
+      .join('\n\n');
     const falRequiresReferenceImages = isFalModel && falImageModelRequiresReferenceImages(falImageModel.value);
     const falRequiresPrompt = isFalModel ? falImageModelRequiresPrompt(falImageModel.value) : true;
 
     if (falRequiresReferenceImages && inputImages.length === 0) {
-      setAlertDialog({
-        title: 'Reference image needed',
-        message: `${falImageModel.label} is an edit-only Fal.ai model. Select at least one reference image before generating.`,
-        confirmLabel: 'Okay',
-      });
-      return;
+      throw new Error(`${falImageModel.label} is an edit-only Fal.ai model. Select at least one reference image before generating.`);
     }
 
     if (isFalModel && falImageModel.value === 'qwen-image-edit-2511-multiple-angles' && inputImages.length !== 1) {
-      setAlertDialog({
-        title: 'Single reference image required',
-        message: 'Qwen Image Edit 2511 Multiple Angles uses one source image at a time. Keep exactly one reference selected before generating.',
-        confirmLabel: 'Okay',
-      });
-      return;
+      throw new Error('Qwen Image Edit 2511 Multiple Angles uses one source image at a time. Keep exactly one reference selected before generating.');
     }
 
     if (
@@ -777,39 +794,19 @@ export default function Home() {
       && (falImageModel.value === 'qwen-image-2-edit' || falImageModel.value === 'qwen-image-2-pro-edit')
       && (inputImages.length < 1 || inputImages.length > 3)
     ) {
-      setAlertDialog({
-        title: 'Reference image count mismatch',
-        message: `${falImageModel.label} requires 1 to 3 reference images, and their order matters for the prompt.`,
-        confirmLabel: 'Okay',
-      });
-      return;
+      throw new Error(`${falImageModel.label} requires 1 to 3 reference images, and their order matters for the prompt.`);
     }
 
     if (isFalModel && falImageModel.value === 'qwen-image-edit-2511-lora' && falImageSettings.qwenImageEdit2511Loras.length === 0) {
-      setAlertDialog({
-        title: 'LoRA selection needed',
-        message: 'Qwen Image Edit 2511 LoRA requires at least one selected LoRA from the registry widget.',
-        confirmLabel: 'Okay',
-      });
-      return;
+      throw new Error('Qwen Image Edit 2511 LoRA requires at least one selected LoRA from the registry widget.');
     }
 
     if (isFalModel && falImageModel.value === 'qwen-image-edit-2511-lora' && falImageSettings.qwenImageEdit2511Loras.length > 3) {
-      setAlertDialog({
-        title: 'Too many LoRAs selected',
-        message: 'Qwen Image Edit 2511 LoRA accepts up to 3 LoRAs per request.',
-        confirmLabel: 'Okay',
-      });
-      return;
+      throw new Error('Qwen Image Edit 2511 LoRA accepts up to 3 LoRAs per request.');
     }
 
     if (falRequiresPrompt && !finalPrompt) {
-      setAlertDialog({
-        title: 'Image prompt needed',
-        message: 'Write a main prompt or use the prefix/suffix fields before generating an image.',
-        confirmLabel: 'Okay',
-      });
-      return;
+      throw new Error('Write a main prompt or use the prefix/suffix fields before generating an image.');
     }
 
     setLoading(true);
@@ -819,7 +816,7 @@ export default function Home() {
         prompt: finalPrompt,
         width,
         height,
-        batchSize,
+        batchSize: input?.batchSize ?? batchSize,
         model: resolvedImageModel,
         quality,
         inputImages,
@@ -846,11 +843,20 @@ export default function Home() {
 
       setGenerated(urls.map((url) => ({ url })));
       await loadAvailableImages();
+      return urls;
     } catch (err) {
-      console.error(err);
-      showErrorDialog('Generation failed', err, 'Try again');
+      console.error('Image generation failed', err);
+      throw err;
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGenerate = async () => {
+    try {
+      await submitImageGeneration();
+    } catch (err) {
+      showErrorDialog('Generation failed', err, 'Try again');
     }
   };
 
@@ -1266,6 +1272,20 @@ export default function Home() {
     }
   };
 
+  const generateWorkflowVoice = async (segment: WorkflowSegment): Promise<GeneratedWorkflowVoiceResult> => {
+    const segmentPrompt = segment.text.trim();
+    if (!segmentPrompt) {
+      throw new Error('This workflow segment needs text before generating voice.');
+    }
+
+    setTtsPrompt(segmentPrompt);
+    const clip = await submitAudioGeneration({ prompt: segmentPrompt });
+    return {
+      voiceUrl: toRelativeAssetUrl(clip.url),
+      srt: clip.srt,
+    };
+  };
+
   const generateWorkflowImage = async (segment: WorkflowSegment) => {
     const segmentPrompt = (segment.image_prompt || segment.text).trim();
     if (!segmentPrompt) {
@@ -1273,48 +1293,16 @@ export default function Home() {
     }
 
     setPrompt(segmentPrompt);
-    setLoading(true);
+    const urls = await submitImageGeneration({
+      batchSize: 1,
+      mainPrompt: segmentPrompt,
+    });
 
-    try {
-      const finalPrompt = [promptPrefix.trim(), segmentPrompt, promptSuffix.trim()]
-        .filter(Boolean)
-        .join('\n\n');
-      const response = await axios.post('/api/generate', {
-        prompt: finalPrompt,
-        width,
-        height,
-        batchSize: 1,
-        model: resolvedImageModel,
-        quality,
-        inputImages,
-      });
-
-      const urls: string[] = [];
-      const generatedItems = response.data?.data;
-
-      if (Array.isArray(generatedItems)) {
-        generatedItems.forEach((item: { url?: string }) => {
-          if (item?.url) {
-            urls.push(item.url);
-          }
-        });
-      } else if (resolvedImageModel === 'a2e') {
-        const responseData = response.data?.data;
-        if (responseData && Array.isArray(responseData.images)) {
-          urls.push(...responseData.images);
-        }
-      }
-
-      if (urls.length === 0) {
-        throw new Error('Image generation completed without returning an image URL.');
-      }
-
-      setGenerated(urls.map((url) => ({ url })));
-      await loadAvailableImages();
-      return urls[0];
-    } finally {
-      setLoading(false);
+    if (urls.length === 0) {
+      throw new Error('Image generation completed without returning an image URL.');
     }
+
+    return urls[0];
   };
 
   const generateWorkflowVideo = async (segment: WorkflowSegment) => {
@@ -1342,14 +1330,36 @@ export default function Home() {
 
     setVideoPrompt(segmentPrompt);
     setVideoImageUrl(startImageUrl);
+    return submitVideoGeneration({
+      prompt: segmentPrompt,
+      imageUrl: startImageUrl,
+      duration,
+    });
+  };
+
+  const submitVideoGeneration = async (input: {
+    duration?: FalVideoDuration;
+    imageUrl: string;
+    prompt: string;
+  }) => {
+    const promptText = input.prompt.trim();
+    if (!promptText) {
+      throw new Error('Write a video prompt before generating a clip.');
+    }
+
+    const startImageUrl = input.imageUrl.trim();
+    if (!startImageUrl) {
+      throw new Error('Choose a generated image before generating video.');
+    }
+
     setVideoGenerating(true);
 
     try {
       return await generateFalVideo({
-        prompt: segmentPrompt,
+        prompt: promptText,
         imageUrl: startImageUrl,
         model: videoModel,
-        duration,
+        duration: input.duration ?? videoDuration,
         resolution: videoResolution,
         aspectRatio: videoAspectRatio,
       });
@@ -1359,36 +1369,10 @@ export default function Home() {
   };
 
   const handleGenerateVideo = async () => {
-    const promptText = videoPrompt.trim();
-    if (!promptText) {
-      setAlertDialog({
-        title: 'Video prompt needed',
-        message: 'Write a video prompt before generating a clip.',
-        confirmLabel: 'Okay',
-      });
-      return;
-    }
-
-    const startImageUrl = videoImageUrl.trim();
-    if (!startImageUrl) {
-      setAlertDialog({
-        title: 'Start image needed',
-        message: 'Choose a generated image before generating video.',
-        confirmLabel: 'Okay',
-      });
-      return;
-    }
-
-    setVideoGenerating(true);
-
     try {
-      const url = await generateFalVideo({
-        prompt: promptText,
-        imageUrl: startImageUrl,
-        model: videoModel,
-        duration: videoDuration,
-        resolution: videoResolution,
-        aspectRatio: videoAspectRatio,
+      const url = await submitVideoGeneration({
+        prompt: videoPrompt,
+        imageUrl: videoImageUrl,
       });
       setAlertDialog({
         title: 'Video saved',
@@ -1398,8 +1382,6 @@ export default function Home() {
     } catch (err) {
       console.error('Video generation failed', err);
       showErrorDialog('Video generation failed', err);
-    } finally {
-      setVideoGenerating(false);
     }
   };
 
@@ -1620,9 +1602,9 @@ export default function Home() {
         <section id="workflows" className="shortcut-target" aria-label="Workflows">
           <WorkflowBoardSection
             isLoading={loading || ttsGenerating || videoGenerating}
-            selectedVoice={selectedTtsVoice}
             workflows={workflows}
             onError={showErrorDialog}
+            onGenerateVoice={generateWorkflowVoice}
             onGenerateImage={generateWorkflowImage}
             onGenerateVideo={generateWorkflowVideo}
             onReload={loadWorkflows}

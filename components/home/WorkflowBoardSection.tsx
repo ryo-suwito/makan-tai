@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import type {
-  CartesiaVoice,
   Workflow,
   WorkflowSegment,
   WorkflowSegmentStatus,
@@ -14,11 +13,19 @@ const WORKFLOW_COLUMNS: { label: string; status: WorkflowSegmentStatus }[] = [
   { status: 'done', label: 'Done' },
 ];
 
+const AUTO_ADVANCE_DELAY_MS = 10_000;
+const NEXT_WORKFLOW_STATUS: Partial<Record<WorkflowSegmentStatus, WorkflowSegmentStatus>> = {
+  todo: 'voice',
+  voice: 'image',
+  image: 'video',
+  video: 'done',
+};
+
 interface WorkflowBoardSectionProps {
   isLoading: boolean;
-  selectedVoice: CartesiaVoice | null;
   workflows: Workflow[];
   onError: (title: string, err: unknown) => void;
+  onGenerateVoice: (segment: WorkflowSegment) => Promise<GeneratedWorkflowVoice>;
   onGenerateImage: (segment: WorkflowSegment) => Promise<string>;
   onGenerateVideo: (segment: WorkflowSegment) => Promise<string>;
   onReload: () => Promise<void>;
@@ -45,15 +52,17 @@ interface NukeDialogState {
 
 export function WorkflowBoardSection({
   isLoading,
-  selectedVoice,
   workflows,
   onError,
+  onGenerateVoice,
   onGenerateImage,
   onGenerateVideo,
   onReload,
 }: WorkflowBoardSectionProps) {
   const [busySegmentId, setBusySegmentId] = useState<number | null>(null);
   const [busyWorkflowId, setBusyWorkflowId] = useState<number | null>(null);
+  const [autoAdvancingStatus, setAutoAdvancingStatus] = useState<WorkflowSegmentStatus | null>(null);
+  const [autoAdvancingSegmentId, setAutoAdvancingSegmentId] = useState<number | null>(null);
   const [editingSegment, setEditingSegment] = useState<WorkflowSegment | null>(null);
   const [draft, setDraft] = useState<SegmentDraftState>({
     text: '',
@@ -133,32 +142,6 @@ export function WorkflowBoardSection({
     });
   };
 
-  const generateVoice = async (segment: WorkflowSegment): Promise<GeneratedWorkflowVoice> => {
-    if (!selectedVoice) {
-      throw new Error('Choose a Cartesia voice before generating workflow voice.');
-    }
-
-    const response = await fetch('/api/cartesia/generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        prompt: segment.text,
-        voiceId: selectedVoice.id,
-        voiceName: selectedVoice.name,
-      }),
-    });
-    const data = await response.json().catch(() => ({}));
-
-    if (!response.ok || typeof data.data?.url !== 'string') {
-      throw new Error(typeof data.error === 'string' ? data.error : 'Failed to generate workflow voice.');
-    }
-
-    return {
-      voiceUrl: toRelativeAssetUrl(data.data.url),
-      srt: typeof data.data?.srt === 'string' ? data.data.srt : null,
-    };
-  };
-
   const assembleSegment = async (segment: WorkflowSegment) => {
     const response = await fetch('/api/workflows/assemble', {
       method: 'POST',
@@ -179,6 +162,8 @@ export function WorkflowBoardSection({
 
     return toRelativeAssetUrl(data.data.url);
   };
+
+  const pause = (durationMs: number) => new Promise((resolve) => window.setTimeout(resolve, durationMs));
 
   const replaceSegmentAsset = async (
     segment: WorkflowSegment,
@@ -206,10 +191,10 @@ export function WorkflowBoardSection({
 
     try {
       const oldUrl = segment.voice_url;
-      const generated = await generateVoice(segment);
+      const generated = await onGenerateVoice(segment);
       const nextSegment: WorkflowSegment = {
         ...segment,
-        voice_url: generated.voiceUrl,
+        voice_url: toRelativeAssetUrl(generated.voiceUrl),
         srt: generated.srt,
         assembled_url: null,
       };
@@ -220,7 +205,7 @@ export function WorkflowBoardSection({
       }
 
       const updatedSegment = await updateSegment(segment.id, {
-        voice_url: generated.voiceUrl,
+        voice_url: toRelativeAssetUrl(generated.voiceUrl),
         srt: generated.srt,
         assembled_url: assembledUrl,
       });
@@ -296,11 +281,11 @@ export function WorkflowBoardSection({
       const workingSegment: WorkflowSegment = { ...segment };
 
       if ((status === 'voice' || status === 'done') && (!workingSegment.voice_url || !workingSegment.srt)) {
-        const generated = await generateVoice(workingSegment);
-        updates.voice_url = generated.voiceUrl;
+        const generated = await onGenerateVoice(workingSegment);
+        updates.voice_url = toRelativeAssetUrl(generated.voiceUrl);
         updates.srt = generated.srt;
         updates.assembled_url = null;
-        workingSegment.voice_url = generated.voiceUrl;
+        workingSegment.voice_url = toRelativeAssetUrl(generated.voiceUrl);
         workingSegment.srt = generated.srt;
         workingSegment.assembled_url = null;
       }
@@ -333,6 +318,42 @@ export function WorkflowBoardSection({
       setBusySegmentId(null);
     }
   };
+
+  const autoAdvanceColumn = async (status: WorkflowSegmentStatus) => {
+    const nextStatus = NEXT_WORKFLOW_STATUS[status];
+    if (!nextStatus) {
+      return;
+    }
+
+    const queuedSegments = workflows.flatMap((workflow) => (
+      workflow.segments
+        .filter((segment) => segment.status === status)
+        .map((segment) => segment)
+    ));
+
+    if (queuedSegments.length === 0) {
+      return;
+    }
+
+    setAutoAdvancingStatus(status);
+
+    try {
+      for (let index = 0; index < queuedSegments.length; index += 1) {
+        const segment = queuedSegments[index];
+        setAutoAdvancingSegmentId(segment.id);
+        await moveSegment(segment, nextStatus);
+
+        if (index < queuedSegments.length - 1) {
+          await pause(AUTO_ADVANCE_DELAY_MS);
+        }
+      }
+    } finally {
+      setAutoAdvancingSegmentId(null);
+      setAutoAdvancingStatus(null);
+    }
+  };
+
+  const isBoardBusy = isLoading || autoAdvancingStatus !== null || busySegmentId !== null || busyWorkflowId !== null;
 
   const saveDraft = async () => {
     if (!editingSegment) {
@@ -466,7 +487,7 @@ export function WorkflowBoardSection({
                   type="button"
                   className="gemini-secondary-button"
                   onClick={() => { void finalizeWorkflow(workflow); }}
-                  disabled={busyWorkflowId === workflow.id || isLoading || !workflow.segments.some((segment) => Boolean(segment.assembled_url))}
+                  disabled={isBoardBusy || !workflow.segments.some((segment) => Boolean(segment.assembled_url))}
                 >
                   {busyWorkflowId === workflow.id ? 'Finalizing...' : 'Finalize'}
                 </button>
@@ -474,7 +495,7 @@ export function WorkflowBoardSection({
                   type="button"
                   className="workflow-nuke-button"
                   onClick={() => openNukeDialog(workflow)}
-                  disabled={busyWorkflowId === workflow.id || isLoading}
+                  disabled={isBoardBusy}
                 >
                   Nuke workflow
                 </button>
@@ -495,8 +516,22 @@ export function WorkflowBoardSection({
           return (
             <div key={column.status} className="workflow-column">
               <div className="workflow-column-header">
-                <strong>{column.label}</strong>
-                <span className="system-prompt-count">{columnSegments.length}</span>
+                <div className="workflow-column-meta">
+                  <strong>{column.label}</strong>
+                  <span className="system-prompt-count">{columnSegments.length}</span>
+                </div>
+                {NEXT_WORKFLOW_STATUS[column.status] && (
+                  <button
+                    type="button"
+                    className="gemini-secondary-button"
+                    disabled={isBoardBusy || columnSegments.length === 0}
+                    onClick={() => { void autoAdvanceColumn(column.status); }}
+                  >
+                    {autoAdvancingStatus === column.status
+                      ? `Running ${autoAdvancingSegmentId ? `#${autoAdvancingSegmentId}` : '...'}`
+                      : `Auto->${NEXT_WORKFLOW_STATUS[column.status]}`}
+                  </button>
+                )}
               </div>
 
               <div className="workflow-card-list">
@@ -528,7 +563,7 @@ export function WorkflowBoardSection({
                       <button
                         type="button"
                         className="gemini-secondary-button"
-                        disabled={busySegmentId === segment.id || isLoading}
+                        disabled={busySegmentId === segment.id || isBoardBusy}
                         onClick={() => { void replaceSegmentVoice(segment); }}
                       >
                         Regenerate voice
@@ -536,7 +571,7 @@ export function WorkflowBoardSection({
                       <button
                         type="button"
                         className="gemini-secondary-button"
-                        disabled={busySegmentId === segment.id || isLoading}
+                        disabled={busySegmentId === segment.id || isBoardBusy}
                         onClick={() => {
                           void replaceSegmentAsset(segment, 'image_url', async () => toRelativeAssetUrl(await onGenerateImage(segment)));
                         }}
@@ -546,7 +581,7 @@ export function WorkflowBoardSection({
                       <button
                         type="button"
                         className="gemini-secondary-button"
-                        disabled={busySegmentId === segment.id || isLoading}
+                        disabled={busySegmentId === segment.id || isBoardBusy}
                         onClick={() => { void replaceSegmentVideo(segment); }}
                       >
                         Regenerate video
@@ -554,7 +589,7 @@ export function WorkflowBoardSection({
                       <button
                         type="button"
                         className="gemini-secondary-button"
-                        disabled={busySegmentId === segment.id || isLoading || !segment.video_url || !segment.voice_url || !segment.srt}
+                        disabled={busySegmentId === segment.id || isBoardBusy || !segment.video_url || !segment.voice_url || !segment.srt}
                         onClick={() => { void replaceSegmentAssembled(segment); }}
                       >
                         Re-assemble
@@ -567,7 +602,7 @@ export function WorkflowBoardSection({
                           key={target.status}
                           type="button"
                           className={target.status === segment.status ? 'workflow-status-active' : 'gemini-secondary-button'}
-                          disabled={busySegmentId === segment.id || target.status === segment.status || isLoading}
+                          disabled={busySegmentId === segment.id || target.status === segment.status || isBoardBusy}
                           onClick={() => { void moveSegment(segment, target.status); }}
                         >
                           {target.label}

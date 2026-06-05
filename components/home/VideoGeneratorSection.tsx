@@ -162,32 +162,40 @@ export function VideoGeneratorSection({
         </div>
       </div>
 
-      <div className="audio-library mt-6">
+      <div className="audio-library video-gallery mt-6">
         <div className="audio-library-header">
           <strong>Saved video clips</strong>
           <button type="button" className="audio-refresh-link" onClick={onRefreshSavedVideos}>
             Refresh
           </button>
         </div>
-        <div className="audio-library-list">
+        <div className="video-gallery-grid">
           {savedVideoClips.length === 0 && (
-            <p className="audio-empty-copy">No saved video clips yet.</p>
+            <p className="audio-empty-copy video-gallery-empty">No saved video clips yet.</p>
           )}
 
           {savedVideoClips.map((clip) => (
-            <div key={clip.url} className="audio-clip-card">
-              <div className="audio-clip-meta">
-                <div>
-                  <strong>{clip.promptPreview || clip.filename}</strong>
-                  <p className="audio-filename">
-                    {[clip.model, clip.duration, clip.resolution].filter(Boolean).join(' · ') || clip.filename}
-                  </p>
-                </div>
-                {clip.createdAt && <span className="audio-date">{new Date(clip.createdAt).toLocaleString()}</span>}
+            <article key={clip.url} className="video-gallery-card">
+              <div className="video-gallery-thumb">
+                <video controls preload="metadata" playsInline className="video-gallery-player" src={clip.url} />
+                {clip.duration && (
+                  <span className="video-gallery-duration">{clip.duration}s</span>
+                )}
               </div>
-              <video controls preload="metadata" className="video-player" src={clip.url} />
-              <a href={clip.url} target="_blank" rel="noreferrer" className="audio-open-link">Open file</a>
-            </div>
+
+              <div className="video-gallery-body">
+                <strong className="video-gallery-title">{clip.promptPreview || clip.filename}</strong>
+                <p className="video-gallery-meta">
+                  {[clip.model, clip.resolution, clip.aspectRatio].filter(Boolean).join(' • ') || clip.filename}
+                </p>
+                <p className="video-gallery-submeta">
+                  {clip.createdAt ? new Date(clip.createdAt).toLocaleString() : 'Saved locally'}
+                </p>
+                <div className="video-gallery-actions">
+                  <a href={clip.url} target="_blank" rel="noreferrer" className="audio-open-link video-gallery-link">Open file</a>
+                </div>
+              </div>
+            </article>
           ))}
         </div>
       </div>
