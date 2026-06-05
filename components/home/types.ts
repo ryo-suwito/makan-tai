@@ -170,7 +170,15 @@ export interface SavedStyleDnaProfile {
   profile: StyleDnaProfile;
 }
 
-export type TextProvider = 'gemini' | 'openrouter';
+export type DirectTextProvider = 'gemini' | 'mimo' | 'deepseek';
+export type TextProvider = DirectTextProvider | 'openrouter';
+
+export interface DirectLlmModelOption {
+  contextLength?: number | null;
+  label: string;
+  maxOutputTokens?: number | null;
+  value: string;
+}
 
 export interface OpenRouterModelOption {
   completionPrice?: string | null;
@@ -309,6 +317,42 @@ export function createOpenRouterCustomOption(value: string): OpenRouterModelOpti
     requestPrice: null,
   };
 }
+
+export function createDirectLlmCustomOption(value: string): DirectLlmModelOption {
+  return {
+    value,
+    label: value,
+    contextLength: null,
+    maxOutputTokens: null,
+  };
+}
+
+export const DIRECT_LLM_VENDOR_OPTIONS: Array<{ label: string; value: DirectTextProvider }> = [
+  { value: 'gemini', label: 'Gemini Direct' },
+  { value: 'mimo', label: 'Xiaomi MiMo' },
+  { value: 'deepseek', label: 'DeepSeek' },
+];
+
+export const DEFAULT_DIRECT_LLM_MODELS: Record<DirectTextProvider, DirectLlmModelOption> = {
+  gemini: {
+    value: 'gemini-3.5-flash',
+    label: 'Gemini 3.5 Flash',
+    contextLength: null,
+    maxOutputTokens: null,
+  },
+  mimo: {
+    value: 'mimo-v2.5-pro',
+    label: 'MiMo V2.5 Pro',
+    contextLength: 1048576,
+    maxOutputTokens: 131072,
+  },
+  deepseek: {
+    value: 'deepseek-v4-flash',
+    label: 'DeepSeek V4 Flash',
+    contextLength: 1048576,
+    maxOutputTokens: 393216,
+  },
+};
 
 export const OPENROUTER_FREE_OPTION: OpenRouterModelOption = {
   value: 'openrouter/free',

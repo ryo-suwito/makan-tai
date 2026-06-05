@@ -1,7 +1,7 @@
 'use client';
 
 import Cartesia from '@cartesia/cartesia-js';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { AlertDialog } from '@/components/home/AlertDialog';
 import { ConnectedCockpitSection } from '@/components/home/ConnectedCockpitSection';
@@ -9,11 +9,14 @@ import { ImageStudioSection } from '@/components/home/ImageStudioSection';
 import { PromptWriterSection } from '@/components/home/PromptWriterSection';
 import { StyleDnaSection } from '@/components/home/StyleDnaSection';
 import {
+  DEFAULT_DIRECT_LLM_MODELS,
   OPENROUTER_FREE_OPTION,
   mapOpenRouterModelToOption,
   type AlertDialogState,
   type FalImageSettings,
   type CartesiaVoice,
+  type DirectLlmModelOption,
+  type DirectTextProvider,
   type FalImageModelOption,
   type FalVideoAspectRatio,
   type FalVideoDuration,
@@ -209,6 +212,9 @@ export default function Home() {
   const [styleDnaSaving, setStyleDnaSaving] = useState(false);
   const [systemPromptSaving, setSystemPromptSaving] = useState(false);
   const [textProvider, setTextProvider] = useState<TextProvider>('gemini');
+  const [directLlmModel, setDirectLlmModel] = useState<DirectLlmModelOption>(DEFAULT_DIRECT_LLM_MODELS.gemini);
+  const [directLlmModelOptions, setDirectLlmModelOptions] = useState<DirectLlmModelOption[]>([]);
+  const [directLlmModelsError, setDirectLlmModelsError] = useState<string | null>(null);
   const [openRouterModel, setOpenRouterModel] = useState<OpenRouterModelOption>(OPENROUTER_FREE_OPTION);
   const [favoriteOpenRouterModels, setFavoriteOpenRouterModels] = useState<OpenRouterModelOption[]>([]);
   const [openRouterModelsError, setOpenRouterModelsError] = useState<string | null>(null);
@@ -232,6 +238,7 @@ export default function Home() {
   const selectedTtsVoice = ttsVoices.find((voice) => voice.id === selectedTtsVoiceId) ?? null;
   const selectedSystemPrompt = systemPrompts.find((item) => String(item.id) === selectedSystemPromptId) ?? null;
   const selectedStyleDna = styleDnaProfiles.find((item) => String(item.id) === selectedStyleDnaId) ?? null;
+  const directTextProvider = textProvider === 'openrouter' ? null : textProvider;
   const isFalModel = isFalImageVendor(model);
   const isSelfHostModel = isSelfHostImageVendor(model);
   const resolvedImageModel = isFalModel ? falImageModel.value : isSelfHostModel ? selfHostImageModel.value : model;
@@ -438,6 +445,35 @@ export default function Home() {
       return [];
     }
   };
+
+  const loadDirectLlmOptions = useCallback(async (provider: DirectTextProvider, query: string) => {
+    setDirectLlmModelsError(null);
+
+    try {
+      const searchParams = new URLSearchParams({ vendor: provider });
+      if (query.trim()) {
+        searchParams.set('q', query.trim());
+      }
+      searchParams.set('limit', '24');
+
+      const response = await fetch(`/api/direct-llm/models?${searchParams.toString()}`);
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(typeof data.error === 'string' ? data.error : 'Failed to load direct vendor models.');
+      }
+
+      const models = Array.isArray(data.data) ? data.data as DirectLlmModelOption[] : [];
+      if (!query.trim()) {
+        setDirectLlmModelOptions(models);
+      }
+      return models;
+    } catch (err) {
+      console.error('Failed to load direct vendor models', err);
+      setDirectLlmModelsError(getErrorMessage(err));
+      return [];
+    }
+  }, []);
 
   const loadOpenRouterFavorites = async () => {
     const response = await fetch('/api/openrouter/favorites');
@@ -1036,8 +1072,10 @@ export default function Home() {
           styleDnaId,
           systemPromptId,
         })
-        : await axios.post('/api/gemini/generate', {
+        : await axios.post('/api/direct-llm/generate', {
           input,
+          vendor: textProvider,
+          model: directLlmModel.value,
           styleDnaId,
           systemPromptId,
         });
@@ -1051,7 +1089,7 @@ export default function Home() {
       setGeminiOutputText(result.text);
     } catch (err) {
       console.error('Text generation failed', err);
-      showErrorDialog(textProvider === 'openrouter' ? 'OpenRouter generation failed' : 'Gemini generation failed', err);
+      showErrorDialog(textProvider === 'openrouter' ? 'OpenRouter generation failed' : 'Direct vendor generation failed', err);
     } finally {
       setGeminiLoading(false);
     }
@@ -1306,6 +1344,20 @@ export default function Home() {
   const selectOpenRouterModel = (option: OpenRouterModelOption) => {
     setOpenRouterModel(option);
     setOpenRouterModelsError(null);
+  };
+
+  const selectTextProvider = (provider: TextProvider) => {
+    setTextProvider(provider);
+    if (provider !== 'openrouter') {
+      setDirectLlmModel(DEFAULT_DIRECT_LLM_MODELS[provider]);
+      setDirectLlmModelOptions([]);
+      setDirectLlmModelsError(null);
+    }
+  };
+
+  const selectDirectLlmModel = (option: DirectLlmModelOption) => {
+    setDirectLlmModel(option);
+    setDirectLlmModelsError(null);
   };
 
   const addOpenRouterFavorite = async () => {
@@ -1711,6 +1763,9 @@ export default function Home() {
                   currentResult={geminiResult}
                   currentStyleDna={selectedStyleDna}
                   currentSystemPrompt={selectedSystemPrompt}
+                  directLlmModel={directLlmModel}
+                  directLlmModelOptions={directLlmModelOptions}
+                  directLlmModelsError={directLlmModelsError}
                   favoriteOpenRouterModels={favoriteOpenRouterModels}
                   isSelectedOpenRouterFavorite={isSelectedOpenRouterFavorite}
                   openRouterModel={openRouterModel}
@@ -1741,12 +1796,14 @@ export default function Home() {
                   onCurrentOutputTextChange={setGeminiOutputText}
                   onDeleteSystemPrompt={(id) => { void handleDeleteSystemPrompt(id); }}
                   onGenerateText={() => { void handleGenerateText(); }}
+                  onLoadDirectLlmOptions={loadDirectLlmOptions}
                   onLoadOpenRouterOptions={loadOpenRouterOptions}
                   onLoadSystemPromptIntoEditor={loadSystemPromptIntoEditor}
                   onPublishToThreads={() => { void handlePublishToThreads(); }}
-                  onProviderChange={setTextProvider}
+                  onProviderChange={selectTextProvider}
                   onRemoveOpenRouterFavorite={(value) => { void removeOpenRouterFavorite(value); }}
                   onSaveSystemPrompt={() => { void handleSaveSystemPrompt(); }}
+                  onSelectDirectLlmModel={selectDirectLlmModel}
                   onSelectOpenRouterModel={selectOpenRouterModel}
                   onSelectQuickOpenRouterFavorite={selectOpenRouterModel}
                   onSelectedStyleDnaIdChange={setSelectedStyleDnaId}

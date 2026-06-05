@@ -1,10 +1,15 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import AsyncCreatableSelect from 'react-select/async-creatable';
 import type { SingleValue } from 'react-select';
 import {
+  DEFAULT_DIRECT_LLM_MODELS,
+  DIRECT_LLM_VENDOR_OPTIONS,
   OPENROUTER_AUTO_OPTION,
   OPENROUTER_FREE_OPTION,
+  createDirectLlmCustomOption,
   createOpenRouterCustomOption,
+  type DirectLlmModelOption,
+  type DirectTextProvider,
   type OpenRouterModelOption,
   type SavedStyleDnaProfile,
   type SystemPrompt,
@@ -19,6 +24,9 @@ interface PromptWriterSectionProps {
   currentOutputText: string;
   currentStyleDna: SavedStyleDnaProfile | null;
   currentSystemPrompt: SystemPrompt | null;
+  directLlmModel: DirectLlmModelOption;
+  directLlmModelOptions: DirectLlmModelOption[];
+  directLlmModelsError: string | null;
   favoriteOpenRouterModels: OpenRouterModelOption[];
   isSelectedOpenRouterFavorite: boolean;
   openRouterModel: OpenRouterModelOption;
@@ -46,12 +54,14 @@ interface PromptWriterSectionProps {
   onCurrentOutputTextChange: (value: string) => void;
   onDeleteSystemPrompt: (id: number) => void;
   onGenerateText: () => void;
+  onLoadDirectLlmOptions: (provider: DirectTextProvider, query: string) => Promise<DirectLlmModelOption[]>;
   onLoadOpenRouterOptions: (query: string) => Promise<OpenRouterModelOption[]>;
   onLoadSystemPromptIntoEditor: (item: SystemPrompt) => void;
   onPublishToThreads: () => void;
   onProviderChange: (provider: TextProvider) => void;
   onRemoveOpenRouterFavorite: (value: string) => void;
   onSaveSystemPrompt: () => void;
+  onSelectDirectLlmModel: (option: DirectLlmModelOption) => void;
   onSelectOpenRouterModel: (option: OpenRouterModelOption) => void;
   onSelectQuickOpenRouterFavorite: (option: OpenRouterModelOption) => void;
   onSelectedStyleDnaIdChange: (value: string) => void;
@@ -66,6 +76,9 @@ export function PromptWriterSection({
   currentOutputText,
   currentStyleDna,
   currentSystemPrompt,
+  directLlmModel,
+  directLlmModelOptions,
+  directLlmModelsError,
   favoriteOpenRouterModels,
   isSelectedOpenRouterFavorite,
   openRouterModel,
@@ -93,12 +106,14 @@ export function PromptWriterSection({
   onCurrentOutputTextChange,
   onDeleteSystemPrompt,
   onGenerateText,
+  onLoadDirectLlmOptions,
   onLoadOpenRouterOptions,
   onLoadSystemPromptIntoEditor,
   onPublishToThreads,
   onProviderChange,
   onRemoveOpenRouterFavorite,
   onSaveSystemPrompt,
+  onSelectDirectLlmModel,
   onSelectOpenRouterModel,
   onSelectQuickOpenRouterFavorite,
   onSelectedStyleDnaIdChange,
@@ -115,6 +130,14 @@ export function PromptWriterSection({
     OPENROUTER_FREE_OPTION,
     OPENROUTER_AUTO_OPTION,
   ].filter((option, index, all) => all.findIndex((item) => item.value === option.value) === index);
+  const directProvider = provider === 'openrouter' ? null : provider;
+  const directDefaultOptions = directProvider
+    ? [
+      ...directLlmModelOptions,
+      directLlmModel,
+      DEFAULT_DIRECT_LLM_MODELS[directProvider],
+    ].filter((option, index, all) => all.findIndex((item) => item.value === option.value) === index)
+    : [];
   const formatSystemPromptDate = (date: string) => new Date(date).toLocaleDateString(undefined, {
     month: 'short',
     day: 'numeric',
@@ -125,6 +148,14 @@ export function PromptWriterSection({
     [currentOutputText],
   );
   const canAddToWorkflow = workflowSegments.length > 0;
+
+  useEffect(() => {
+    if (!directProvider) {
+      return;
+    }
+
+    void onLoadDirectLlmOptions(directProvider, '');
+  }, [directProvider, onLoadDirectLlmOptions]);
 
   const openWorkflowModal = () => {
     const fallbackTitle = currentResult?.systemPromptName || currentResult?.styleDnaName || 'Generated workflow';
@@ -195,8 +226,54 @@ export function PromptWriterSection({
             className="w-full p-2 border rounded mb-2"
           >
             <option value="gemini">Gemini Direct</option>
+            <option value="mimo">Xiaomi MiMo</option>
+            <option value="deepseek">DeepSeek</option>
             <option value="openrouter">OpenRouter</option>
           </select>
+
+          {directProvider && (
+            <>
+              <label className="block mb-1">Direct Vendor Model</label>
+              <div className="openrouter-model-select">
+                <AsyncCreatableSelect
+                  cacheOptions
+                  classNamePrefix="openrouter-select"
+                  defaultOptions={directDefaultOptions}
+                  formatCreateLabel={(inputValue) => `Use custom model id: ${inputValue}`}
+                  formatOptionLabel={(option) => (
+                    <div>
+                      <div>{option.label}</div>
+                      <div className="openrouter-option-meta">{option.value}</div>
+                    </div>
+                  )}
+                  isClearable={false}
+                  loadOptions={(query) => onLoadDirectLlmOptions(directProvider, query)}
+                  loadingMessage={() => 'Searching models...'}
+                  menuPlacement="auto"
+                  noOptionsMessage={({ inputValue }) => (inputValue ? 'No matching models.' : 'Type to search models.')}
+                  onChange={(option: SingleValue<DirectLlmModelOption>) => {
+                    if (option) {
+                      onSelectDirectLlmModel(option);
+                    }
+                  }}
+                  onCreateOption={(inputValue) => {
+                    const customValue = inputValue.trim();
+                    if (!customValue) {
+                      return;
+                    }
+                    onSelectDirectLlmModel(createDirectLlmCustomOption(customValue));
+                  }}
+                  placeholder={`Search ${DIRECT_LLM_VENDOR_OPTIONS.find((item) => item.value === directProvider)?.label ?? 'direct vendor'} models...`}
+                  unstyled
+                  value={directLlmModel}
+                />
+              </div>
+              <p className="text-sm text-gray-600 mb-2">
+                Direct vendors use the configured model list when available, with documented defaults as fallback.
+              </p>
+              {directLlmModelsError && <p className="voice-error-copy">{directLlmModelsError}</p>}
+            </>
+          )}
 
           {provider === 'openrouter' && (
             <>

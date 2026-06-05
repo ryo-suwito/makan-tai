@@ -1,8 +1,12 @@
-import { GoogleGenAI } from '@google/genai';
+import {
+  generateDirectLlmText,
+  type DirectLlmVendorSlug,
+} from './direct-llm-vendors';
 
-export type TextGenerationProvider = 'gemini' | 'openrouter';
+export type TextGenerationProvider = DirectLlmVendorSlug | 'openrouter';
 
 export interface GenerateTextParams {
+  directModel?: string | null;
   input: string;
   openRouterModel?: string | null;
   provider: TextGenerationProvider;
@@ -65,29 +69,13 @@ export async function generateText(params: GenerateTextParams): Promise<Generate
     throw new Error('Missing input');
   }
 
-  if (params.provider === 'gemini') {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error('Missing GEMINI_API_KEY');
-    }
-
-    const model = 'gemini-3.5-flash';
-    const ai = new GoogleGenAI({ apiKey });
-    const response = await ai.models.generateContent({
-      model,
-      contents: input,
-      config: {
-        systemInstruction: systemInstruction || undefined,
-        temperature: 0.7,
-      },
+  if (params.provider !== 'openrouter') {
+    return generateDirectLlmText({
+      slug: params.provider,
+      input,
+      model: params.directModel,
+      systemInstruction,
     });
-
-    return {
-      text: response.text ?? '',
-      model,
-      provider: 'gemini',
-      resolvedModel: null,
-    };
   }
 
   const apiKey = process.env.OPENROUTER_API_KEY;
