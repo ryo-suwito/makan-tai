@@ -6,6 +6,7 @@ import type {
   GeneratedVideoClip,
 } from '@/components/home/types';
 import type { FalVideoModelOption } from '@/lib/fal-video-models';
+import { ReferenceImagePickerModal } from '@/components/home/ReferenceImagePickerModal';
 
 interface VideoGeneratorSectionProps {
   aspectRatio: FalVideoAspectRatio;
@@ -53,6 +54,8 @@ export function VideoGeneratorSection({
   onRefreshSavedVideos,
   onResolutionChange,
 }: VideoGeneratorSectionProps) {
+  const selectedStartImages = imageUrl ? [imageUrl] : [];
+
   return (
     <div className="voice-section mt-6">
       <div className="voice-section-header">
@@ -74,19 +77,22 @@ export function VideoGeneratorSection({
             placeholder="Describe the motion, camera move, and pacing..."
           />
 
-          <label className="block mb-1 mt-4">Start Image</label>
-          <select
-            value={imageUrl}
-            onChange={(event) => onImageUrlChange(event.target.value)}
-            className="w-full p-2 border rounded"
-          >
-            <option value="">Select a generated image...</option>
-            {availableImages.map((image) => (
-              <option key={image} value={image}>
-                {image}
-              </option>
-            ))}
-          </select>
+          <div className="mt-4">
+            <ReferenceImagePickerModal
+              availableImages={availableImages}
+              selectedImages={selectedStartImages}
+              maxSelected={1}
+              onAddReferenceImages={(images) => {
+                if (images[0]) {
+                  onImageUrlChange(images[0]);
+                }
+              }}
+              onClearReferenceImages={() => onImageUrlChange('')}
+              onRemoveReferenceImage={() => onImageUrlChange('')}
+              onTogglePreviousImage={(image) => onImageUrlChange(imageUrl === image ? '' : image)}
+              title="Start Image"
+            />
+          </div>
         </div>
 
         <div>

@@ -246,6 +246,16 @@ export default function Home() {
   const composedImagePrompt = [promptPrefix.trim(), prompt.trim(), promptSuffix.trim()]
     .filter(Boolean)
     .join('\n\n');
+  const savedAssetCount = availableImages.length + savedAudioClips.length + savedVideoClips.length;
+  const generationBusyLabel = loading
+    ? 'Image run active'
+    : ttsGenerating
+      ? 'Voice render active'
+      : videoGenerating
+        ? 'Video render active'
+        : geminiLoading
+          ? 'Text run active'
+          : 'Idle';
 
   const closeAlertDialog = () => setAlertDialog(null);
 
@@ -1392,225 +1402,260 @@ export default function Home() {
 
   return (
     <>
-      <nav className="floating-shortcuts" aria-label="Tool shortcuts">
-        {FLOATING_SHORTCUTS.map((shortcut) => (
-          <a key={shortcut.href} className="floating-shortcut-link" href={shortcut.href}>
-            <span aria-hidden="true" className="floating-shortcut-dot" />
-            <span className="floating-shortcut-short">{shortcut.shortLabel}</span>
-            <span className="floating-shortcut-label">{shortcut.label}</span>
-          </a>
-        ))}
-      </nav>
+      <div className="studio-shell">
+        <aside className="studio-nav" aria-label="Tool shortcuts">
+          <nav className="studio-nav-list">
+            {FLOATING_SHORTCUTS.map((shortcut) => (
+              <a key={shortcut.href} className="studio-nav-link" href={shortcut.href}>
+                <span className="studio-nav-short">{shortcut.shortLabel}</span>
+                <span className="studio-nav-label">{shortcut.label}</span>
+              </a>
+            ))}
+          </nav>
+        </aside>
 
-      <div className="min-h-screen p-6">
-        <section id="cockpit" className="shortcut-target" aria-label="Connected cockpit">
-          <ConnectedCockpitSection
-            threadsConnection={threadsConnection}
-            onConnectThreads={() => {
-              if (typeof window !== 'undefined') {
-                const returnTo = encodeURIComponent(window.location.pathname);
-                window.location.assign(`/api/threads/oauth/start?returnTo=${returnTo}`);
-              }
-            }}
-          />
-        </section>
+        <div className="studio-main">
+          <header className="studio-hero">
+            <div className="studio-hero-copy">
+              <p className="studio-kicker">Creative Ops Console</p>
+              <h1>AI Image + Voice Studio</h1>
+              <p>
+                Image, voice, video, text, and workflow tools in one dense desktop workspace.
+              </p>
+            </div>
 
-        <h1 className="text-2xl font-bold mb-4">AI Image + Voice Studio</h1>
+            <div className="studio-status-grid" aria-label="Workspace status">
+              <div className="studio-status">
+                <span className="studio-status-label">Runs</span>
+                <strong>{generationBusyLabel}</strong>
+              </div>
+              <div className="studio-status">
+                <span className="studio-status-label">Assets</span>
+                <strong>{savedAssetCount}</strong>
+              </div>
+              <div className="studio-status">
+                <span className="studio-status-label">Workflows</span>
+                <strong>{workflows.length}</strong>
+              </div>
+              <div className="studio-status">
+                <span className="studio-status-label">Threads</span>
+                <strong>{threadsConnection?.connected ? 'Connected' : 'Offline'}</strong>
+              </div>
+            </div>
+          </header>
 
-        <section id="image-studio" className="shortcut-target" aria-label="Image studio">
-          <ImageStudioSection
-            availableImages={availableImages}
-            batchSize={batchSize}
-            geminiAspectRatio={geminiAspectRatio}
-            height={height}
-            inputPrompt={prompt}
-            inputPromptPrefix={promptPrefix}
-            inputPromptSuffix={promptSuffix}
-            inputReferenceImages={inputImages}
-            isFalImageModel={isFalModel}
-            isGeminiModel={isGeminiModel}
-            isOpenAiModel={isOpenAiModel}
-            isSelfHostImageModel={isSelfHostModel}
-            isSavingDisabled={!composedImagePrompt.trim()}
-            isSubmitting={loading}
-            falImageEstimate={falImageEstimate}
-            falImageModel={falImageModel}
-            falImageSettings={falImageSettings}
-            falImageModelOptions={FAL_IMAGE_MODEL_OPTIONS}
-            model={model}
-            quality={quality}
-            savedPrompts={savedPrompts}
-            selfHostImageModel={selfHostImageModel}
-            selfHostImageModelOptions={SELF_HOST_IMAGE_MODEL_OPTIONS}
-            totalCost={totalCost}
-            width={width}
-            onAddReferenceImages={addReferenceImages}
-            onBatchSizeChange={setBatchSize}
-            onClearPrompt={() => {
-              setPromptPrefix('');
-              setPrompt('');
-              setPromptSuffix('');
-            }}
-            onClearReferenceImages={clearReferenceImages}
-            onDeleteSavedPrompt={(id) => { void handleDeletePrompt(id); }}
-            onFalImageModelChange={setFalImageModel}
-            onFalImageSettingsChange={setFalImageSettings}
-            onGenerateImage={() => { void handleGenerate(); }}
-            onGeminiAspectRatioChange={setGeminiAspectRatio}
-            onHeightChange={setHeight}
-            onLoadSavedPromptToMain={setPrompt}
-            onLoadSavedPromptToPrefix={setPromptPrefix}
-            onLoadSavedPromptToSuffix={setPromptSuffix}
-            onModelChange={setModel}
-            onPromptChange={setPrompt}
-            onPromptPrefixChange={setPromptPrefix}
-            onPromptSuffixChange={setPromptSuffix}
-            onQualityChange={setQuality}
-            onRemoveReferenceImage={removeReferenceImage}
-            onSavePrompt={() => { void handleSavePrompt(); }}
-            onSelfHostImageModelChange={setSelfHostImageModel}
-            onTogglePreviousImage={toggleReferenceImage}
-            onWidthChange={setWidth}
-          />
-        </section>
+          <main className="studio-workspace">
+            <section id="cockpit" className="shortcut-target studio-section studio-section-compact" aria-label="Connected cockpit">
+              <ConnectedCockpitSection
+                threadsConnection={threadsConnection}
+                onConnectThreads={() => {
+                  if (typeof window !== 'undefined') {
+                    const returnTo = encodeURIComponent(window.location.pathname);
+                    window.location.assign(`/api/threads/oauth/start?returnTo=${returnTo}`);
+                  }
+                }}
+              />
+            </section>
 
-        <section id="voice-generator" className="shortcut-target" aria-label="Voice generator">
-          <VoiceGeneratorSection
-            prompt={ttsPrompt}
-            savedAudioClips={savedAudioClips}
-            selectedVoice={selectedTtsVoice}
-            selectedVoiceId={selectedTtsVoiceId}
-            voices={ttsVoices}
-            voicesError={ttsVoicesError}
-            voicesLoading={ttsVoicesLoading}
-            isGeneratingAudio={ttsGenerating}
-            isPreviewing={ttsPreviewLoading}
-            onGenerateAudio={() => { void handleGenerateAudio(); }}
-            onPreviewPrompt={() => { void handlePreviewPrompt(); }}
-            onPromptChange={setTtsPrompt}
-            onRefreshSavedAudio={() => { void loadSavedAudioClips(); }}
-            onSelectedVoiceIdChange={setSelectedTtsVoiceId}
-          />
-        </section>
+            <section id="image-studio" className="shortcut-target studio-section" aria-label="Image studio">
+              <ImageStudioSection
+                availableImages={availableImages}
+                batchSize={batchSize}
+                geminiAspectRatio={geminiAspectRatio}
+                height={height}
+                inputPrompt={prompt}
+                inputPromptPrefix={promptPrefix}
+                inputPromptSuffix={promptSuffix}
+                inputReferenceImages={inputImages}
+                isFalImageModel={isFalModel}
+                isGeminiModel={isGeminiModel}
+                isOpenAiModel={isOpenAiModel}
+                isSelfHostImageModel={isSelfHostModel}
+                isSavingDisabled={!composedImagePrompt.trim()}
+                isSubmitting={loading}
+                falImageEstimate={falImageEstimate}
+                falImageModel={falImageModel}
+                falImageSettings={falImageSettings}
+                falImageModelOptions={FAL_IMAGE_MODEL_OPTIONS}
+                model={model}
+                quality={quality}
+                savedPrompts={savedPrompts}
+                selfHostImageModel={selfHostImageModel}
+                selfHostImageModelOptions={SELF_HOST_IMAGE_MODEL_OPTIONS}
+                totalCost={totalCost}
+                width={width}
+                onAddReferenceImages={addReferenceImages}
+                onBatchSizeChange={setBatchSize}
+                onClearPrompt={() => {
+                  setPromptPrefix('');
+                  setPrompt('');
+                  setPromptSuffix('');
+                }}
+                onClearReferenceImages={clearReferenceImages}
+                onDeleteSavedPrompt={(id) => { void handleDeletePrompt(id); }}
+                onFalImageModelChange={setFalImageModel}
+                onFalImageSettingsChange={setFalImageSettings}
+                onGenerateImage={() => { void handleGenerate(); }}
+                onGeminiAspectRatioChange={setGeminiAspectRatio}
+                onHeightChange={setHeight}
+                onLoadSavedPromptToMain={setPrompt}
+                onLoadSavedPromptToPrefix={setPromptPrefix}
+                onLoadSavedPromptToSuffix={setPromptSuffix}
+                onModelChange={setModel}
+                onPromptChange={setPrompt}
+                onPromptPrefixChange={setPromptPrefix}
+                onPromptSuffixChange={setPromptSuffix}
+                onQualityChange={setQuality}
+                onRemoveReferenceImage={removeReferenceImage}
+                onSavePrompt={() => { void handleSavePrompt(); }}
+                onSelfHostImageModelChange={setSelfHostImageModel}
+                onTogglePreviousImage={toggleReferenceImage}
+                onWidthChange={setWidth}
+              />
+            </section>
 
-        <section id="video-generator" className="shortcut-target" aria-label="Video generator">
-          <VideoGeneratorSection
-            aspectRatio={videoAspectRatio}
-            availableImages={availableImages}
-            duration={videoDuration}
-            imageUrl={videoImageUrl}
-            isGenerating={videoGenerating}
-            model={videoModel}
-            modelOptions={FAL_VIDEO_MODEL_OPTIONS}
-            prompt={videoPrompt}
-            resolution={videoResolution}
-            savedVideoClips={savedVideoClips}
-            supportedDurations={supportedVideoDurations}
-            onAspectRatioChange={setVideoAspectRatio}
-            onDurationChange={setVideoDuration}
-            onGenerateVideo={() => { void handleGenerateVideo(); }}
-            onImageUrlChange={setVideoImageUrl}
-            onModelChange={(value) => {
-              setVideoModel(value);
-              const nextDurations = getSupportedFalVideoDurations(value);
-              if (!nextDurations.includes(videoDuration)) {
-                setVideoDuration(nextDurations[0]);
-              }
-            }}
-            onPromptChange={setVideoPrompt}
-            onRefreshSavedVideos={() => { void loadSavedVideoClips(); }}
-            onResolutionChange={setVideoResolution}
-          />
-        </section>
+            <div className="studio-duo">
+              <section id="voice-generator" className="shortcut-target studio-section" aria-label="Voice generator">
+                <VoiceGeneratorSection
+                  prompt={ttsPrompt}
+                  savedAudioClips={savedAudioClips}
+                  selectedVoice={selectedTtsVoice}
+                  selectedVoiceId={selectedTtsVoiceId}
+                  voices={ttsVoices}
+                  voicesError={ttsVoicesError}
+                  voicesLoading={ttsVoicesLoading}
+                  isGeneratingAudio={ttsGenerating}
+                  isPreviewing={ttsPreviewLoading}
+                  onGenerateAudio={() => { void handleGenerateAudio(); }}
+                  onPreviewPrompt={() => { void handlePreviewPrompt(); }}
+                  onPromptChange={setTtsPrompt}
+                  onRefreshSavedAudio={() => { void loadSavedAudioClips(); }}
+                  onSelectedVoiceIdChange={setSelectedTtsVoiceId}
+                />
+              </section>
 
-        <section id="style-dna" className="shortcut-target" aria-label="Style DNA">
-          <StyleDnaSection
-            analysisEngineLabel={styleDnaEngineLabel}
-            draftName={styleDnaName}
-            draftProfile={styleDnaDraftProfile}
-            isAnalyzing={styleDnaAnalyzing}
-            isSaving={styleDnaSaving}
-            samples={styleDnaSamples}
-            savedProfiles={styleDnaProfiles}
-            selectedStyleDnaId={selectedStyleDnaId}
-            onAnalyze={() => { void handleAnalyzeStyleDna(); }}
-            onClearDraft={() => {
-              setStyleDnaName('');
-              setStyleDnaSamples('');
-              setStyleDnaDraftProfile(null);
-            }}
-            onDeleteProfile={(id) => { void handleDeleteStyleDna(id); }}
-            onDraftNameChange={setStyleDnaName}
-            onSamplesChange={setStyleDnaSamples}
-            onSave={() => { void handleSaveStyleDna(); }}
-            onSelectProfileForWriter={setSelectedStyleDnaId}
-          />
-        </section>
+              <section id="video-generator" className="shortcut-target studio-section" aria-label="Video generator">
+                <VideoGeneratorSection
+                  aspectRatio={videoAspectRatio}
+                  availableImages={availableImages}
+                  duration={videoDuration}
+                  imageUrl={videoImageUrl}
+                  isGenerating={videoGenerating}
+                  model={videoModel}
+                  modelOptions={FAL_VIDEO_MODEL_OPTIONS}
+                  prompt={videoPrompt}
+                  resolution={videoResolution}
+                  savedVideoClips={savedVideoClips}
+                  supportedDurations={supportedVideoDurations}
+                  onAspectRatioChange={setVideoAspectRatio}
+                  onDurationChange={setVideoDuration}
+                  onGenerateVideo={() => { void handleGenerateVideo(); }}
+                  onImageUrlChange={setVideoImageUrl}
+                  onModelChange={(value) => {
+                    setVideoModel(value);
+                    const nextDurations = getSupportedFalVideoDurations(value);
+                    if (!nextDurations.includes(videoDuration)) {
+                      setVideoDuration(nextDurations[0]);
+                    }
+                  }}
+                  onPromptChange={setVideoPrompt}
+                  onRefreshSavedVideos={() => { void loadSavedVideoClips(); }}
+                  onResolutionChange={setVideoResolution}
+                />
+              </section>
+            </div>
 
-        <section id="prompt-writer" className="shortcut-target" aria-label="Prompt writer">
-          <PromptWriterSection
-            currentInput={geminiInput}
-            currentOutputText={geminiOutputText}
-            currentResult={geminiResult}
-            currentStyleDna={selectedStyleDna}
-            currentSystemPrompt={selectedSystemPrompt}
-            favoriteOpenRouterModels={favoriteOpenRouterModels}
-            isSelectedOpenRouterFavorite={isSelectedOpenRouterFavorite}
-            openRouterModel={openRouterModel}
-            openRouterModelsError={openRouterModelsError}
-            outputCharacterCount={outputCharacterCount}
-            provider={textProvider}
-            selectedStyleDnaId={selectedStyleDnaId}
-            selectedSystemPromptId={selectedSystemPromptId}
-            styleDnaProfiles={styleDnaProfiles}
-            systemPromptDraftName={systemPromptName}
-            systemPromptDraftText={systemPromptText}
-            systemPromptSaving={systemPromptSaving}
-            systemPrompts={systemPrompts}
-            isCreatingWorkflow={workflowSaving}
-            isGenerating={geminiLoading}
-            isPublishingToThreads={threadsPublishing}
-            isThreadsLengthExceeded={isThreadsLengthExceeded}
-            isThreadsReady={isThreadsReady}
-            onApplyTextToImagePrompt={applyGeminiTextToImagePrompt}
-            onApplyTextToVoicePrompt={applyGeminiTextToVoicePrompt}
-            onAddOpenRouterFavorite={() => { void addOpenRouterFavorite(); }}
-            onClearSystemPromptDraft={() => {
-              setSystemPromptName('');
-              setSystemPromptText('');
-            }}
-            onCreateWorkflowFromSegments={createWorkflowFromSegments}
-            onCurrentInputChange={setGeminiInput}
-            onCurrentOutputTextChange={setGeminiOutputText}
-            onDeleteSystemPrompt={(id) => { void handleDeleteSystemPrompt(id); }}
-            onGenerateText={() => { void handleGenerateText(); }}
-            onLoadOpenRouterOptions={loadOpenRouterOptions}
-            onLoadSystemPromptIntoEditor={loadSystemPromptIntoEditor}
-            onPublishToThreads={() => { void handlePublishToThreads(); }}
-            onProviderChange={setTextProvider}
-            onRemoveOpenRouterFavorite={(value) => { void removeOpenRouterFavorite(value); }}
-            onSaveSystemPrompt={() => { void handleSaveSystemPrompt(); }}
-            onSelectOpenRouterModel={selectOpenRouterModel}
-            onSelectQuickOpenRouterFavorite={selectOpenRouterModel}
-            onSelectedStyleDnaIdChange={setSelectedStyleDnaId}
-            onSelectedSystemPromptIdChange={setSelectedSystemPromptId}
-            onSystemPromptDraftNameChange={setSystemPromptName}
-            onSystemPromptDraftTextChange={setSystemPromptText}
-          />
-        </section>
+            <div className="studio-duo">
+              <section id="style-dna" className="shortcut-target studio-section" aria-label="Style DNA">
+                <StyleDnaSection
+                  analysisEngineLabel={styleDnaEngineLabel}
+                  draftName={styleDnaName}
+                  draftProfile={styleDnaDraftProfile}
+                  isAnalyzing={styleDnaAnalyzing}
+                  isSaving={styleDnaSaving}
+                  samples={styleDnaSamples}
+                  savedProfiles={styleDnaProfiles}
+                  selectedStyleDnaId={selectedStyleDnaId}
+                  onAnalyze={() => { void handleAnalyzeStyleDna(); }}
+                  onClearDraft={() => {
+                    setStyleDnaName('');
+                    setStyleDnaSamples('');
+                    setStyleDnaDraftProfile(null);
+                  }}
+                  onDeleteProfile={(id) => { void handleDeleteStyleDna(id); }}
+                  onDraftNameChange={setStyleDnaName}
+                  onSamplesChange={setStyleDnaSamples}
+                  onSave={() => { void handleSaveStyleDna(); }}
+                  onSelectProfileForWriter={setSelectedStyleDnaId}
+                />
+              </section>
 
-        <section id="workflows" className="shortcut-target" aria-label="Workflows">
-          <WorkflowBoardSection
-            isLoading={loading || ttsGenerating || videoGenerating}
-            workflows={workflows}
-            onError={showErrorDialog}
-            onGenerateVoice={generateWorkflowVoice}
-            onGenerateImage={generateWorkflowImage}
-            onGenerateVideo={generateWorkflowVideo}
-            onReload={loadWorkflows}
-          />
-        </section>
+              <section id="prompt-writer" className="shortcut-target studio-section studio-section-wide" aria-label="Prompt writer">
+                <PromptWriterSection
+                  currentInput={geminiInput}
+                  currentOutputText={geminiOutputText}
+                  currentResult={geminiResult}
+                  currentStyleDna={selectedStyleDna}
+                  currentSystemPrompt={selectedSystemPrompt}
+                  favoriteOpenRouterModels={favoriteOpenRouterModels}
+                  isSelectedOpenRouterFavorite={isSelectedOpenRouterFavorite}
+                  openRouterModel={openRouterModel}
+                  openRouterModelsError={openRouterModelsError}
+                  outputCharacterCount={outputCharacterCount}
+                  provider={textProvider}
+                  selectedStyleDnaId={selectedStyleDnaId}
+                  selectedSystemPromptId={selectedSystemPromptId}
+                  styleDnaProfiles={styleDnaProfiles}
+                  systemPromptDraftName={systemPromptName}
+                  systemPromptDraftText={systemPromptText}
+                  systemPromptSaving={systemPromptSaving}
+                  systemPrompts={systemPrompts}
+                  isCreatingWorkflow={workflowSaving}
+                  isGenerating={geminiLoading}
+                  isPublishingToThreads={threadsPublishing}
+                  isThreadsLengthExceeded={isThreadsLengthExceeded}
+                  isThreadsReady={isThreadsReady}
+                  onApplyTextToImagePrompt={applyGeminiTextToImagePrompt}
+                  onApplyTextToVoicePrompt={applyGeminiTextToVoicePrompt}
+                  onAddOpenRouterFavorite={() => { void addOpenRouterFavorite(); }}
+                  onClearSystemPromptDraft={() => {
+                    setSystemPromptName('');
+                    setSystemPromptText('');
+                  }}
+                  onCreateWorkflowFromSegments={createWorkflowFromSegments}
+                  onCurrentInputChange={setGeminiInput}
+                  onCurrentOutputTextChange={setGeminiOutputText}
+                  onDeleteSystemPrompt={(id) => { void handleDeleteSystemPrompt(id); }}
+                  onGenerateText={() => { void handleGenerateText(); }}
+                  onLoadOpenRouterOptions={loadOpenRouterOptions}
+                  onLoadSystemPromptIntoEditor={loadSystemPromptIntoEditor}
+                  onPublishToThreads={() => { void handlePublishToThreads(); }}
+                  onProviderChange={setTextProvider}
+                  onRemoveOpenRouterFavorite={(value) => { void removeOpenRouterFavorite(value); }}
+                  onSaveSystemPrompt={() => { void handleSaveSystemPrompt(); }}
+                  onSelectOpenRouterModel={selectOpenRouterModel}
+                  onSelectQuickOpenRouterFavorite={selectOpenRouterModel}
+                  onSelectedStyleDnaIdChange={setSelectedStyleDnaId}
+                  onSelectedSystemPromptIdChange={setSelectedSystemPromptId}
+                  onSystemPromptDraftNameChange={setSystemPromptName}
+                  onSystemPromptDraftTextChange={setSystemPromptText}
+                />
+              </section>
+            </div>
 
+            <section id="workflows" className="shortcut-target studio-section" aria-label="Workflows">
+              <WorkflowBoardSection
+                isLoading={loading || ttsGenerating || videoGenerating}
+                workflows={workflows}
+                onError={showErrorDialog}
+                onGenerateVoice={generateWorkflowVoice}
+                onGenerateImage={generateWorkflowImage}
+                onGenerateVideo={generateWorkflowVideo}
+                onReload={loadWorkflows}
+              />
+            </section>
+          </main>
+        </div>
       </div>
 
       {alertDialog && (

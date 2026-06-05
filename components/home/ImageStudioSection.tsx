@@ -1,6 +1,4 @@
-import Image from 'next/image';
-import { normalizeLocalAssetUrl } from '@/lib/asset-urls';
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useState } from 'react';
 import type { Quality } from '@/lib/cost';
 import Select from 'react-select';
 import type { SingleValue } from 'react-select';
@@ -17,7 +15,7 @@ import type {
   SavedPrompt,
   SelfHostImageModelOption,
 } from '@/components/home/types';
-import { ImageGallerySelector } from '@/components/home/ImageGallerySelector';
+import { ReferenceImagePickerModal } from '@/components/home/ReferenceImagePickerModal';
 
 interface ImageStudioSectionProps {
   availableImages: string[];
@@ -70,11 +68,6 @@ interface ImageStudioSectionProps {
   onWidthChange: (value: number) => void;
 }
 
-interface DeviceReferenceImage {
-  name: string;
-  url: string;
-}
-
 export function ImageStudioSection({
   availableImages,
   batchSize,
@@ -125,31 +118,12 @@ export function ImageStudioSection({
   onTogglePreviousImage,
   onWidthChange,
 }: ImageStudioSectionProps) {
-  const [deviceReferenceImages, setDeviceReferenceImages] = useState<DeviceReferenceImage[]>([]);
-  const [visibleAvailableCount, setVisibleAvailableCount] = useState(18);
   const [horizontalAngleDraft, setHorizontalAngleDraft] = useState(
     String(falImageSettings.qwenImageEdit2511MultipleAngles.horizontalAngle),
   );
   const [verticalAngleDraft, setVerticalAngleDraft] = useState(
     String(falImageSettings.qwenImageEdit2511MultipleAngles.verticalAngle),
   );
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const galleryScrollRef = useRef<HTMLDivElement | null>(null);
-  const gallerySentinelRef = useRef<HTMLDivElement | null>(null);
-  const availableImageSet = useMemo(() => new Set(availableImages), [availableImages]);
-  const visibleAvailableImages = availableImages.slice(0, visibleAvailableCount);
-  const selectedLibraryCount = inputReferenceImages.filter((image) => availableImageSet.has(image)).length;
-
-  useEffect(() => {
-    setDeviceReferenceImages((current) => current.filter((item) => inputReferenceImages.includes(item.url)));
-  }, [inputReferenceImages]);
-
-  useEffect(() => {
-    setVisibleAvailableCount((current) => {
-      const next = Math.max(18, current);
-      return Math.min(next, availableImages.length || 18);
-    });
-  }, [availableImages.length]);
 
   useEffect(() => {
     setHorizontalAngleDraft(String(falImageSettings.qwenImageEdit2511MultipleAngles.horizontalAngle));
@@ -158,71 +132,6 @@ export function ImageStudioSection({
   useEffect(() => {
     setVerticalAngleDraft(String(falImageSettings.qwenImageEdit2511MultipleAngles.verticalAngle));
   }, [falImageSettings.qwenImageEdit2511MultipleAngles.verticalAngle]);
-
-  useEffect(() => {
-    const root = galleryScrollRef.current;
-    const sentinel = gallerySentinelRef.current;
-
-    if (!root || !sentinel || visibleAvailableCount >= availableImages.length) {
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            setVisibleAvailableCount((current) => Math.min(current + 18, availableImages.length));
-          }
-        });
-      },
-      {
-        root,
-        rootMargin: '120px 0px',
-        threshold: 0.1,
-      },
-    );
-
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [availableImages.length, visibleAvailableCount]);
-
-  const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files || []);
-    const nextDeviceImages: DeviceReferenceImage[] = [];
-
-    for (const file of files) {
-      const reader = new FileReader();
-      const fileDataUrl = await new Promise<string>((resolve) => {
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.readAsDataURL(file);
-      });
-      nextDeviceImages.push({ name: file.name, url: fileDataUrl });
-    }
-
-    if (nextDeviceImages.length === 0) {
-      return;
-    }
-
-    setDeviceReferenceImages((current) => {
-      const next = [...current];
-      nextDeviceImages.forEach((item) => {
-        if (!next.some((existing) => existing.url === item.url)) {
-          next.push(item);
-        }
-      });
-      return next;
-    });
-    onAddReferenceImages(nextDeviceImages.map((item) => item.url));
-    event.target.value = '';
-  };
-
-  const clearDeviceSelections = () => {
-    deviceReferenceImages.forEach((item) => onRemoveReferenceImage(item.url));
-    setDeviceReferenceImages([]);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
 
   const addFalLora = (option: FalImageLoraOption) => {
     if (falImageSettings.qwenImageEdit2511Loras.some((item) => item.id === option.id)) {
@@ -992,100 +901,15 @@ export function ImageStudioSection({
           <button onClick={() => onBatchSizeChange(8)} className="px-2 py-1 bg-gray-200 rounded">8</button>
         </div>
 
-        <label className="block mb-1">Reference Images</label>
-        <div className="reference-image-toolbar">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            onChange={handleFileChange}
-            className="reference-image-input"
-          />
-          <button
-            type="button"
-            className="gemini-secondary-button"
-            onClick={clearDeviceSelections}
-            disabled={deviceReferenceImages.length === 0}
-          >
-            Clear device picks
-          </button>
-        </div>
-        <p className="text-sm text-gray-600 mb-4">Select one or multiple reference images. They will be sent along with the prompt.</p>
-
-        {deviceReferenceImages.length > 0 && (
-          <p className="reference-file-meta">
-            Device uploads: {deviceReferenceImages.map((item) => item.name).join(', ')}
-          </p>
-        )}
-
-        {inputReferenceImages.length > 0 && (
-          <div className="system-prompt-library mb-4">
-            <div className="system-prompt-library-header">
-              <strong>Selected references</strong>
-              <span className="system-prompt-count">{inputReferenceImages.length}</span>
-            </div>
-            <p className="reference-selection-summary">
-              {selectedLibraryCount} from previous images, {deviceReferenceImages.length} from device.
-            </p>
-            <div className="reference-selected-list">
-              {inputReferenceImages.map((image, index) => {
-                const fromLibrary = availableImageSet.has(image);
-                return (
-                  <div key={`${image}-${index}`} className="reference-selected-card">
-                    <div className="reference-selected-image">
-                      <Image src={normalizeLocalAssetUrl(image)} alt={`Selected reference ${index + 1}`} fill style={{ objectFit: 'cover' }} />
-                    </div>
-                    <div className="reference-selected-meta">
-                      <span className="reference-source-pill">{fromLibrary ? 'Previous image' : 'Device upload'}</span>
-                      <button
-                        type="button"
-                        className="reference-selected-remove"
-                        onClick={() => onRemoveReferenceImage(image)}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="gemini-action-row">
-              <button
-                type="button"
-                className="gemini-secondary-button"
-                onClick={() => {
-                  clearDeviceSelections();
-                  onClearReferenceImages();
-                }}
-              >
-                Clear all references
-              </button>
-            </div>
-          </div>
-        )}
-
-        {availableImages.length > 0 && (
-          <ImageGallerySelector
-            availableImages={availableImages}
-            multiSelect
-            selectedImages={inputReferenceImages}
-            onToggleImage={onTogglePreviousImage}
-            emptyMessage="No previous generated images yet. Generate one first and it will show up here as a reusable reference."
-          />
-        )}
-
-        {availableImages.length === 0 && (
-          <p className="reference-empty-copy">
-            No previous generated images yet. Generate one first and it will show up here as a reusable reference.
-          </p>
-        )}
-
-        {inputReferenceImages.length === 0 && (
-          <p className="reference-empty-copy">
-            No references selected right now.
-          </p>
-        )}
+        <ReferenceImagePickerModal
+          availableImages={availableImages}
+          selectedImages={inputReferenceImages}
+          onAddReferenceImages={onAddReferenceImages}
+          onClearReferenceImages={onClearReferenceImages}
+          onRemoveReferenceImage={onRemoveReferenceImage}
+          onTogglePreviousImage={onTogglePreviousImage}
+          title="Reference Images"
+        />
 
         <div className="mb-4">
           {totalCost !== null ? (

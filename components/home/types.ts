@@ -234,6 +234,7 @@ export interface Workflow {
   segments: WorkflowSegment[];
   title: string;
   updated_at: string;
+  youtube_config_id: number | null;
 }
 
 export interface ThreadsConnectionStatus {

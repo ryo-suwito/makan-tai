@@ -17,6 +17,22 @@ interface ThreadsAuthRow {
   user_id: string | null;
 }
 
+interface YouTubeConfigRow {
+  category_id: string;
+  contains_synthetic_media: number;
+  created_at: string;
+  default_description: string;
+  default_tags_json: string;
+  id: number;
+  name: string;
+  privacy_status: YouTubePrivacyStatus;
+  self_declared_made_for_kids: number;
+  thumbnail_url: string | null;
+  title_template: string;
+  updated_at: string;
+}
+
+type YouTubePrivacyStatus = 'private' | 'public' | 'unlisted';
 type WorkflowSegmentStatus = 'todo' | 'voice' | 'image' | 'video' | 'done';
 
 interface WorkflowRow {
@@ -25,6 +41,7 @@ interface WorkflowRow {
   id: number;
   title: string;
   updated_at: string;
+  youtube_config_id: number | null;
 }
 
 interface WorkflowSegmentRow {
@@ -90,6 +107,34 @@ export interface StoredWorkflow {
   segments: StoredWorkflowSegment[];
   title: string;
   updated_at: string;
+  youtube_config_id: number | null;
+}
+
+export interface StoredYouTubeConfig {
+  category_id: string;
+  contains_synthetic_media: boolean;
+  created_at: string;
+  default_description: string;
+  default_tags: string[];
+  id: number;
+  name: string;
+  privacy_status: YouTubePrivacyStatus;
+  self_declared_made_for_kids: boolean;
+  thumbnail_url: string | null;
+  title_template: string;
+  updated_at: string;
+}
+
+export interface YouTubeConfigInput {
+  category_id?: string | null;
+  contains_synthetic_media?: boolean | null;
+  default_description?: string | null;
+  default_tags?: string[] | null;
+  name: string;
+  privacy_status?: YouTubePrivacyStatus | null;
+  self_declared_made_for_kids?: boolean | null;
+  thumbnail_url?: string | null;
+  title_template?: string | null;
 }
 
 export interface WorkflowSegmentUpdate {
@@ -148,16 +193,35 @@ function getDb(): Database.Database {
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
+  db.exec(`CREATE TABLE IF NOT EXISTS youtube_configs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    title_template TEXT NOT NULL DEFAULT '{workflowTitle}',
+    default_description TEXT NOT NULL DEFAULT '',
+    default_tags_json TEXT NOT NULL DEFAULT '[]',
+    category_id TEXT NOT NULL DEFAULT '22',
+    privacy_status TEXT NOT NULL DEFAULT 'private' CHECK (privacy_status IN ('private', 'public', 'unlisted')),
+    self_declared_made_for_kids INTEGER NOT NULL DEFAULT 0,
+    contains_synthetic_media INTEGER NOT NULL DEFAULT 1,
+    thumbnail_url TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
   db.exec(`CREATE TABLE IF NOT EXISTS workflows (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
     finalized_url TEXT,
+    youtube_config_id INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (youtube_config_id) REFERENCES youtube_configs(id) ON DELETE SET NULL
   )`);
   const workflowColumns = db.prepare('PRAGMA table_info(workflows)').all() as Array<{ name: string }>;
   if (!workflowColumns.some((column) => column.name === 'finalized_url')) {
     db.exec('ALTER TABLE workflows ADD COLUMN finalized_url TEXT');
+  }
+  if (!workflowColumns.some((column) => column.name === 'youtube_config_id')) {
+    db.exec('ALTER TABLE workflows ADD COLUMN youtube_config_id INTEGER REFERENCES youtube_configs(id) ON DELETE SET NULL');
   }
   db.exec(`CREATE TABLE IF NOT EXISTS workflow_segments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -188,6 +252,7 @@ function getDb(): Database.Database {
     db.exec('ALTER TABLE workflow_segments ADD COLUMN video_no_sound INTEGER NOT NULL DEFAULT 0');
   }
   db.exec('CREATE INDEX IF NOT EXISTS idx_workflow_segments_workflow_order ON workflow_segments (workflow_id, segment_order, id)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_workflows_youtube_config ON workflows (youtube_config_id)');
   return db;
 }
 
@@ -228,6 +293,45 @@ function mapWorkflowSegmentRow(row: WorkflowSegmentRow): StoredWorkflowSegment {
   };
 }
 
+function normalizeYouTubePrivacyStatus(value: unknown): YouTubePrivacyStatus {
+  return value === 'public' || value === 'unlisted' || value === 'private' ? value : 'private';
+}
+
+function normalizeYouTubeTags(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => String(item).trim())
+    .filter(Boolean);
+}
+
+function mapYouTubeConfigRow(row: YouTubeConfigRow): StoredYouTubeConfig {
+  let parsedTags: unknown = [];
+
+  try {
+    parsedTags = JSON.parse(row.default_tags_json);
+  } catch {
+    parsedTags = [];
+  }
+
+  return {
+    id: row.id,
+    name: row.name,
+    title_template: row.title_template,
+    default_description: row.default_description,
+    default_tags: normalizeYouTubeTags(parsedTags),
+    category_id: row.category_id,
+    privacy_status: normalizeYouTubePrivacyStatus(row.privacy_status),
+    self_declared_made_for_kids: Boolean(row.self_declared_made_for_kids),
+    contains_synthetic_media: Boolean(row.contains_synthetic_media),
+    thumbnail_url: row.thumbnail_url,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
 function mapWorkflowRows(workflowRows: WorkflowRow[], segmentRows: WorkflowSegmentRow[]): StoredWorkflow[] {
   const segmentsByWorkflow = new Map<number, StoredWorkflowSegment[]>();
 
@@ -241,6 +345,7 @@ function mapWorkflowRows(workflowRows: WorkflowRow[], segmentRows: WorkflowSegme
     id: row.id,
     title: row.title,
     finalized_url: row.finalized_url,
+    youtube_config_id: row.youtube_config_id,
     created_at: row.created_at,
     updated_at: row.updated_at,
     segments: segmentsByWorkflow.get(row.id) ?? [],
@@ -306,6 +411,105 @@ export function deleteStyleDnaProfile(id: number) {
   database.prepare('DELETE FROM style_dna_profiles WHERE id = ?').run(id);
 }
 
+export function createYouTubeConfig(input: YouTubeConfigInput): StoredYouTubeConfig | null {
+  const database = getDb();
+  const name = input.name.trim();
+  if (!name) {
+    throw new Error('YouTube config name is required.');
+  }
+
+  const result = database.prepare(`
+    INSERT INTO youtube_configs (
+      name,
+      title_template,
+      default_description,
+      default_tags_json,
+      category_id,
+      privacy_status,
+      self_declared_made_for_kids,
+      contains_synthetic_media,
+      thumbnail_url
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    name,
+    input.title_template?.trim() || '{workflowTitle}',
+    input.default_description?.trim() || '',
+    JSON.stringify(normalizeYouTubeTags(input.default_tags ?? [])),
+    input.category_id?.trim() || '22',
+    normalizeYouTubePrivacyStatus(input.privacy_status),
+    Number(Boolean(input.self_declared_made_for_kids)),
+    input.contains_synthetic_media === undefined || input.contains_synthetic_media === null ? 1 : Number(Boolean(input.contains_synthetic_media)),
+    input.thumbnail_url?.trim() || null,
+  );
+
+  return getYouTubeConfigById(Number(result.lastInsertRowid));
+}
+
+export function getYouTubeConfigs(): StoredYouTubeConfig[] {
+  const database = getDb();
+  const rows = database.prepare(`
+    SELECT
+      id,
+      name,
+      title_template,
+      default_description,
+      default_tags_json,
+      category_id,
+      privacy_status,
+      self_declared_made_for_kids,
+      contains_synthetic_media,
+      thumbnail_url,
+      created_at,
+      updated_at
+    FROM youtube_configs
+    ORDER BY updated_at DESC, id DESC
+  `).all() as YouTubeConfigRow[];
+  return rows.map(mapYouTubeConfigRow);
+}
+
+export function getYouTubeConfigById(id: number): StoredYouTubeConfig | null {
+  const database = getDb();
+  const row = database.prepare(`
+    SELECT
+      id,
+      name,
+      title_template,
+      default_description,
+      default_tags_json,
+      category_id,
+      privacy_status,
+      self_declared_made_for_kids,
+      contains_synthetic_media,
+      thumbnail_url,
+      created_at,
+      updated_at
+    FROM youtube_configs
+    WHERE id = ?
+  `).get(id) as YouTubeConfigRow | undefined;
+  return row ? mapYouTubeConfigRow(row) : null;
+}
+
+export function updateWorkflowYouTubeConfig(workflowId: number, youtubeConfigId: number | null): StoredWorkflow | null {
+  const database = getDb();
+  const workflow = getWorkflowById(workflowId);
+  if (!workflow) {
+    return null;
+  }
+
+  if (youtubeConfigId !== null && !getYouTubeConfigById(youtubeConfigId)) {
+    throw new Error('YouTube config does not exist.');
+  }
+
+  database.prepare(`
+    UPDATE workflows
+    SET youtube_config_id = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(youtubeConfigId, workflowId);
+
+  return getWorkflowById(workflowId);
+}
+
 export function createWorkflow(title: string, segments: WorkflowSegmentInput[]): StoredWorkflow | null {
   const database = getDb();
   const normalizedTitle = title.trim();
@@ -368,7 +572,7 @@ export function createWorkflow(title: string, segments: WorkflowSegmentInput[]):
 
 export function getWorkflows(): StoredWorkflow[] {
   const database = getDb();
-  const workflowRows = database.prepare('SELECT id, title, finalized_url, created_at, updated_at FROM workflows ORDER BY updated_at DESC, id DESC').all() as WorkflowRow[];
+  const workflowRows = database.prepare('SELECT id, title, finalized_url, youtube_config_id, created_at, updated_at FROM workflows ORDER BY updated_at DESC, id DESC').all() as WorkflowRow[];
   const segmentRows = database.prepare(`
     SELECT
       id,
@@ -395,7 +599,7 @@ export function getWorkflows(): StoredWorkflow[] {
 
 export function getWorkflowById(id: number): StoredWorkflow | null {
   const database = getDb();
-  const workflowRow = database.prepare('SELECT id, title, finalized_url, created_at, updated_at FROM workflows WHERE id = ?').get(id) as WorkflowRow | undefined;
+  const workflowRow = database.prepare('SELECT id, title, finalized_url, youtube_config_id, created_at, updated_at FROM workflows WHERE id = ?').get(id) as WorkflowRow | undefined;
   if (!workflowRow) {
     return null;
   }

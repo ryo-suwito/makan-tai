@@ -185,69 +185,6 @@ export function PromptWriterSection({
             </button>
           </div>
 
-          <div className="system-prompt-library">
-            <div className="system-prompt-library-header">
-              <strong>Saved system prompts</strong>
-              <span className="system-prompt-count">{systemPrompts.length}</span>
-            </div>
-            <div className="system-prompt-table-shell">
-              {systemPrompts.length === 0 && (
-                <p className="audio-empty-copy">No system prompts saved yet.</p>
-              )}
-
-              {systemPrompts.length > 0 && (
-                <table className="system-prompt-table">
-                  <thead>
-                    <tr>
-                      <th scope="col">Name</th>
-                      <th scope="col">Preview</th>
-                      <th scope="col">Saved</th>
-                      <th scope="col">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {systemPrompts.map((item) => (
-                      <tr
-                        key={item.id}
-                        className={selectedSystemPromptId === String(item.id) ? 'system-prompt-row-active' : undefined}
-                        onClick={() => setDetailPrompt(item)}
-                      >
-                        <td>
-                          <button
-                            type="button"
-                            className="system-prompt-name-button"
-                            onClick={() => setDetailPrompt(item)}
-                          >
-                            {item.name}
-                          </button>
-                        </td>
-                        <td>
-                          <button
-                            type="button"
-                            className="system-prompt-preview-button"
-                            onClick={() => setDetailPrompt(item)}
-                          >
-                            {item.text}
-                          </button>
-                        </td>
-                        <td className="system-prompt-date-cell">{formatSystemPromptDate(item.created_at)}</td>
-                        <td>
-                          <div className="system-prompt-table-actions" onClick={(event) => event.stopPropagation()}>
-                            <button type="button" className="system-prompt-load-small" onClick={() => onLoadSystemPromptIntoEditor(item)}>
-                              Load
-                            </button>
-                            <button type="button" className="system-prompt-delete-small" onClick={() => onDeleteSystemPrompt(item.id)}>
-                              Delete
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </div>
         </div>
 
         <div className="gemini-panel">
@@ -492,6 +429,70 @@ export function PromptWriterSection({
               </>
             )}
           </div>
+        </div>
+      </div>
+
+      <div className="system-prompt-library system-prompt-library-entity">
+        <div className="system-prompt-library-header">
+          <strong>Saved system prompts</strong>
+          <span className="system-prompt-count">{systemPrompts.length}</span>
+        </div>
+        <div className="system-prompt-table-shell">
+          {systemPrompts.length === 0 && (
+            <p className="audio-empty-copy">No system prompts saved yet.</p>
+          )}
+
+          {systemPrompts.length > 0 && (
+            <table className="system-prompt-table">
+              <thead>
+                <tr>
+                  <th scope="col">Name</th>
+                  <th scope="col">Preview</th>
+                  <th scope="col">Saved</th>
+                  <th scope="col">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {systemPrompts.map((item) => (
+                  <tr
+                    key={item.id}
+                    className={selectedSystemPromptId === String(item.id) ? 'system-prompt-row-active' : undefined}
+                    onClick={() => setDetailPrompt(item)}
+                  >
+                    <td>
+                      <button
+                        type="button"
+                        className="system-prompt-name-button"
+                        onClick={() => setDetailPrompt(item)}
+                      >
+                        {item.name}
+                      </button>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="system-prompt-preview-button"
+                        onClick={() => setDetailPrompt(item)}
+                      >
+                        {item.text}
+                      </button>
+                    </td>
+                    <td className="system-prompt-date-cell">{formatSystemPromptDate(item.created_at)}</td>
+                    <td>
+                      <div className="system-prompt-table-actions" onClick={(event) => event.stopPropagation()}>
+                        <button type="button" className="system-prompt-load-small" onClick={() => onLoadSystemPromptIntoEditor(item)}>
+                          Load
+                        </button>
+                        <button type="button" className="system-prompt-delete-small" onClick={() => onDeleteSystemPrompt(item.id)}>
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
 

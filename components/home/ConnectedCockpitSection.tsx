@@ -38,8 +38,8 @@ export function ConnectedCockpitSection({
       </div>
 
       <div className="cockpit-grid">
-        <div className="cockpit-card">
-          <div className="cockpit-card-header">
+        <details className="cockpit-card">
+          <summary className="cockpit-card-header">
             <div>
               <strong>Threads</strong>
               <p className="cockpit-copy">
@@ -49,7 +49,7 @@ export function ConnectedCockpitSection({
             <span className={`cockpit-status-pill${connected ? ' cockpit-status-pill-connected' : ''}`}>
               {statusLabel}
             </span>
-          </div>
+          </summary>
 
           <div className="cockpit-meta-grid">
             <div className="cockpit-meta-item">
@@ -84,7 +84,7 @@ export function ConnectedCockpitSection({
               {buttonLabel}
             </button>
           </div>
-        </div>
+        </details>
       </div>
     </div>
   );

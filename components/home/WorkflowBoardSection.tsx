@@ -50,6 +50,11 @@ interface NukeDialogState {
   workflow: Workflow;
 }
 
+function getSegmentPreviewText(segment: WorkflowSegment) {
+  const text = segment.text || segment.image_prompt || segment.video_prompt || 'No prompt text saved.';
+  return text.length > 180 ? `${text.slice(0, 177).trimEnd()}...` : text;
+}
+
 export function WorkflowBoardSection({
   isLoading,
   workflows,
@@ -539,78 +544,90 @@ export function WorkflowBoardSection({
                   <p className="audio-empty-copy">No cards here.</p>
                 )}
 
-                {columnSegments.map(({ workflow, segment }) => (
-                  <article key={segment.id} className="workflow-card">
-                    <button type="button" className="workflow-card-main" onClick={() => openEditor(segment)}>
-                      <span className="workflow-card-title">{workflow.title}</span>
-                      <span className="workflow-card-order">Segment {segment.order}</span>
-                      <span className="workflow-card-text">{segment.text || segment.image_prompt || segment.video_prompt}</span>
-                    </button>
+                {columnSegments.map(({ workflow, segment }) => {
+                  const videoPreviewUrl = segment.assembled_url || segment.video_url;
+                  const imagePreviewUrl = videoPreviewUrl ? '' : segment.image_url;
 
-                    {segment.image_url && (
-                      <img className="workflow-card-image" src={buildDisplayUrl(segment.image_url)} alt="" />
-                    )}
+                  return (
+                    <article key={segment.id} className="workflow-segment-item">
+                      {(videoPreviewUrl || imagePreviewUrl) && (
+                        <div className="workflow-segment-preview">
+                          {videoPreviewUrl ? (
+                            <video controls preload="metadata" playsInline className="workflow-segment-media workflow-segment-video" src={buildDisplayUrl(videoPreviewUrl)} />
+                          ) : (
+                            <img className="workflow-segment-media workflow-segment-image" src={buildDisplayUrl(imagePreviewUrl)} alt="" />
+                          )}
+                          <span className="workflow-segment-badge">Segment {segment.order}</span>
+                        </div>
+                      )}
 
-                    {segment.voice_url && (
-                      <audio controls preload="none" className="audio-player" src={buildDisplayUrl(segment.voice_url)} />
-                    )}
-
-                    {segment.video_url && (
-                      <video controls preload="metadata" className="video-player" src={buildDisplayUrl(segment.assembled_url || segment.video_url)} />
-                    )}
-
-                    <div className="workflow-card-actions">
-                      <button
-                        type="button"
-                        className="gemini-secondary-button"
-                        disabled={busySegmentId === segment.id || isBoardBusy}
-                        onClick={() => { void replaceSegmentVoice(segment); }}
-                      >
-                        Regenerate voice
-                      </button>
-                      <button
-                        type="button"
-                        className="gemini-secondary-button"
-                        disabled={busySegmentId === segment.id || isBoardBusy}
-                        onClick={() => {
-                          void replaceSegmentAsset(segment, 'image_url', async () => toRelativeAssetUrl(await onGenerateImage(segment)));
-                        }}
-                      >
-                        Regenerate image
-                      </button>
-                      <button
-                        type="button"
-                        className="gemini-secondary-button"
-                        disabled={busySegmentId === segment.id || isBoardBusy}
-                        onClick={() => { void replaceSegmentVideo(segment); }}
-                      >
-                        Regenerate video
-                      </button>
-                      <button
-                        type="button"
-                        className="gemini-secondary-button"
-                        disabled={busySegmentId === segment.id || isBoardBusy || !segment.video_url || !segment.voice_url || !segment.srt}
-                        onClick={() => { void replaceSegmentAssembled(segment); }}
-                      >
-                        Re-assemble
-                      </button>
-                    </div>
-
-                    <div className="workflow-card-actions">
-                      {WORKFLOW_COLUMNS.map((target) => (
-                        <button
-                          key={target.status}
-                          type="button"
-                          className={target.status === segment.status ? 'workflow-status-active' : 'gemini-secondary-button'}
-                          disabled={busySegmentId === segment.id || target.status === segment.status || isBoardBusy}
-                          onClick={() => { void moveSegment(segment, target.status); }}
-                        >
-                          {target.label}
+                      <div className="workflow-segment-body">
+                        <button type="button" className="workflow-card-main" onClick={() => openEditor(segment)}>
+                          <strong className="workflow-segment-title">{workflow.title}</strong>
+                          <span className="workflow-segment-meta">
+                            Segment {segment.order} • {segment.status}
+                          </span>
+                          <span className="workflow-segment-text">{getSegmentPreviewText(segment)}</span>
                         </button>
-                      ))}
-                    </div>
-                  </article>
-                ))}
+
+                        {segment.voice_url && (
+                          <audio controls preload="none" className="audio-player" src={buildDisplayUrl(segment.voice_url)} />
+                        )}
+
+                        <div className="workflow-segment-actions workflow-card-actions">
+                          <button
+                            type="button"
+                            className="gemini-secondary-button"
+                            disabled={busySegmentId === segment.id || isBoardBusy}
+                            onClick={() => { void replaceSegmentVoice(segment); }}
+                          >
+                            Regenerate voice
+                          </button>
+                          <button
+                            type="button"
+                            className="gemini-secondary-button"
+                            disabled={busySegmentId === segment.id || isBoardBusy}
+                            onClick={() => {
+                              void replaceSegmentAsset(segment, 'image_url', async () => toRelativeAssetUrl(await onGenerateImage(segment)));
+                            }}
+                          >
+                            Regenerate image
+                          </button>
+                          <button
+                            type="button"
+                            className="gemini-secondary-button"
+                            disabled={busySegmentId === segment.id || isBoardBusy}
+                            onClick={() => { void replaceSegmentVideo(segment); }}
+                          >
+                            Regenerate video
+                          </button>
+                          <button
+                            type="button"
+                            className="gemini-secondary-button"
+                            disabled={busySegmentId === segment.id || isBoardBusy || !segment.video_url || !segment.voice_url || !segment.srt}
+                            onClick={() => { void replaceSegmentAssembled(segment); }}
+                          >
+                            Re-assemble
+                          </button>
+                        </div>
+
+                        <div className="workflow-segment-actions workflow-card-actions">
+                          {WORKFLOW_COLUMNS.map((target) => (
+                            <button
+                              key={target.status}
+                              type="button"
+                              className={target.status === segment.status ? 'workflow-status-active' : 'gemini-secondary-button'}
+                              disabled={busySegmentId === segment.id || target.status === segment.status || isBoardBusy}
+                              onClick={() => { void moveSegment(segment, target.status); }}
+                            >
+                              {target.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
               </div>
             </div>
           );

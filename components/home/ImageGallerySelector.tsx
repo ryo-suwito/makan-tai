@@ -85,8 +85,7 @@ export function ImageGallerySelector({
                   <Image src={normalizeLocalAssetUrl(image)} alt={`Image ${index + 1}`} fill style={{ objectFit: 'cover' }} />
                 </div>
                 <div className="reference-gallery-meta">
-                  <span>{isSelected ? 'Selected' : multiSelect ? 'Click to add' : 'Click to select'}</span>
-                  <span className="reference-gallery-check">{isSelected ? (multiSelect ? 'Remove' : '✓') : `#${index + 1}`}</span>
+                  <span className="reference-gallery-check">{isSelected ? (multiSelect ? 'Remove' : '✓') : ''}</span>
                 </div>
               </button>
             );
