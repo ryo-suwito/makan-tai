@@ -235,6 +235,49 @@ export interface Workflow {
   title: string;
   updated_at: string;
   youtube_config_id: number | null;
+  youtube_publish_url: string | null;
+  youtube_published_at: string | null;
+  youtube_video_id: string | null;
+}
+
+export type YouTubePrivacyStatus = 'private' | 'public' | 'unlisted';
+
+export interface YouTubeProfile {
+  channel_id: string | null;
+  channel_title: string | null;
+  created_at: string;
+  google_account_email: string | null;
+  google_account_id: string | null;
+  has_access_token: boolean;
+  has_refresh_token: boolean;
+  id: number;
+  name: string;
+  scope: string | null;
+  token_expires_at: string | null;
+  token_type: string | null;
+  updated_at: string;
+}
+
+export interface YouTubeConfig {
+  category_id: string | null;
+  contains_synthetic_media: boolean;
+  created_at: string;
+  default_description: string;
+  default_tags: string[];
+  id: number;
+  name: string;
+  privacy_status: YouTubePrivacyStatus;
+  self_declared_made_for_kids: boolean;
+  thumbnail_url: string | null;
+  title_template: string;
+  updated_at: string;
+  youtube_profile_id: number | null;
+}
+
+export interface YouTubeConnectionStatus {
+  callbackUrl: string;
+  configured: boolean;
+  hasExplicitRedirectUri: boolean;
 }
 
 export interface ThreadsConnectionStatus {

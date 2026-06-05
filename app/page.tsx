@@ -33,6 +33,9 @@ import {
   type Workflow,
   type WorkflowSegment,
   type WorkflowSegmentDraft,
+  type YouTubeConfig,
+  type YouTubeConnectionStatus,
+  type YouTubeProfile,
 } from '@/components/home/types';
 import { VideoGeneratorSection } from '@/components/home/VideoGeneratorSection';
 import { VoiceGeneratorSection } from '@/components/home/VoiceGeneratorSection';
@@ -215,6 +218,9 @@ export default function Home() {
   const [geminiLoading, setGeminiLoading] = useState(false);
   const [threadsPublishing, setThreadsPublishing] = useState(false);
   const [threadsConnection, setThreadsConnection] = useState<ThreadsConnectionStatus | null>(null);
+  const [youtubeConnection, setYoutubeConnection] = useState<YouTubeConnectionStatus | null>(null);
+  const [youtubeProfiles, setYoutubeProfiles] = useState<YouTubeProfile[]>([]);
+  const [youtubeConfigs, setYoutubeConfigs] = useState<YouTubeConfig[]>([]);
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [workflowSaving, setWorkflowSaving] = useState(false);
 
@@ -465,6 +471,39 @@ export default function Home() {
     setThreadsConnection((data.data as ThreadsConnectionStatus | undefined) ?? null);
   };
 
+  const loadYouTubeProfiles = async () => {
+    const response = await fetch('/api/youtube/profiles');
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(typeof data.error === 'string' ? data.error : 'Failed to load YouTube profiles.');
+    }
+
+    setYoutubeProfiles(Array.isArray(data.data) ? data.data as YouTubeProfile[] : []);
+  };
+
+  const loadYouTubeStatus = async () => {
+    const response = await fetch('/api/youtube/status');
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(typeof data.error === 'string' ? data.error : 'Failed to load YouTube status.');
+    }
+
+    setYoutubeConnection((data.data as YouTubeConnectionStatus | undefined) ?? null);
+  };
+
+  const loadYouTubeConfigs = async () => {
+    const response = await fetch('/api/youtube/configs');
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(typeof data.error === 'string' ? data.error : 'Failed to load YouTube configs.');
+    }
+
+    setYoutubeConfigs(Array.isArray(data.data) ? data.data as YouTubeConfig[] : []);
+  };
+
   const loadWorkflows = async () => {
     const response = await fetch('/api/workflows');
     const data = await response.json().catch(() => ({}));
@@ -486,6 +525,9 @@ export default function Home() {
     void loadStyleDnaProfiles().catch((err) => console.error('Failed to load Style DNA profiles', err));
     void loadOpenRouterFavorites().catch((err) => console.error('Failed to load OpenRouter favorites', err));
     void loadThreadsStatus().catch((err) => console.error('Failed to load Threads status', err));
+    void loadYouTubeStatus().catch((err) => console.error('Failed to load YouTube status', err));
+    void loadYouTubeProfiles().catch((err) => console.error('Failed to load YouTube profiles', err));
+    void loadYouTubeConfigs().catch((err) => console.error('Failed to load YouTube configs', err));
     void loadWorkflows().catch((err) => console.error('Failed to load workflows', err));
   }, []);
 
@@ -497,8 +539,10 @@ export default function Home() {
     const url = new URL(window.location.href);
     const threadsStatus = url.searchParams.get('threads');
     const threadsMessage = url.searchParams.get('threads_message');
+    const youtubeStatus = url.searchParams.get('youtube');
+    const youtubeMessage = url.searchParams.get('youtube_message');
 
-    if (!threadsStatus) {
+    if (!threadsStatus && !youtubeStatus) {
       return;
     }
 
@@ -517,8 +561,26 @@ export default function Home() {
       });
     }
 
+    if (youtubeStatus === 'connected') {
+      setAlertDialog({
+        title: 'YouTube connected',
+        message: 'The selected YouTube profile now has encrypted OAuth tokens saved.',
+        confirmLabel: 'Nice',
+      });
+      void loadYouTubeProfiles().catch((err) => console.error('Failed to refresh YouTube profiles', err));
+      void loadYouTubeStatus().catch((err) => console.error('Failed to refresh YouTube status', err));
+    } else if (youtubeStatus === 'error') {
+      setAlertDialog({
+        title: 'YouTube connection failed',
+        message: youtubeMessage || 'The YouTube OAuth flow did not complete successfully.',
+        confirmLabel: 'Close',
+      });
+    }
+
     url.searchParams.delete('threads');
     url.searchParams.delete('threads_message');
+    url.searchParams.delete('youtube');
+    url.searchParams.delete('youtube_message');
     window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
   }, []);
 
@@ -1154,6 +1216,54 @@ export default function Home() {
     }
   };
 
+  const saveYouTubeProfile = async (
+    payload: {
+      channel_id: string | null;
+      channel_title: string | null;
+      google_account_email: string | null;
+      google_account_id: string | null;
+      name: string;
+      refresh_token?: string | null;
+    },
+    id?: number,
+  ) => {
+    try {
+      const response = await fetch('/api/youtube/profiles', {
+        method: id ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, id }),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(typeof data.error === 'string' ? data.error : 'Failed to save YouTube profile.');
+      }
+
+      await loadYouTubeProfiles();
+    } catch (err) {
+      console.error('Failed to save YouTube profile', err);
+      showErrorDialog('YouTube profile save failed', err);
+      throw err;
+    }
+  };
+
+  const deleteYouTubeProfile = async (id: number) => {
+    try {
+      const response = await fetch(`/api/youtube/profiles?id=${id}`, { method: 'DELETE' });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(typeof data.error === 'string' ? data.error : 'Failed to delete YouTube profile.');
+      }
+
+      await loadYouTubeProfiles();
+      await loadYouTubeConfigs();
+    } catch (err) {
+      console.error('Failed to delete YouTube profile', err);
+      showErrorDialog('YouTube profile delete failed', err);
+    }
+  };
+
   const addReferenceImages = (images: string[]) => {
     setInputImages((prev) => {
       const next = [...prev];
@@ -1448,12 +1558,16 @@ export default function Home() {
             <section id="cockpit" className="shortcut-target studio-section studio-section-compact" aria-label="Connected cockpit">
               <ConnectedCockpitSection
                 threadsConnection={threadsConnection}
+                youtubeConnection={youtubeConnection}
+                youtubeProfiles={youtubeProfiles}
                 onConnectThreads={() => {
                   if (typeof window !== 'undefined') {
                     const returnTo = encodeURIComponent(window.location.pathname);
                     window.location.assign(`/api/threads/oauth/start?returnTo=${returnTo}`);
                   }
                 }}
+                onDeleteYouTubeProfile={deleteYouTubeProfile}
+                onSaveYouTubeProfile={saveYouTubeProfile}
               />
             </section>
 
@@ -1647,11 +1761,14 @@ export default function Home() {
               <WorkflowBoardSection
                 isLoading={loading || ttsGenerating || videoGenerating}
                 workflows={workflows}
+                youtubeConfigs={youtubeConfigs}
+                youtubeProfiles={youtubeProfiles}
                 onError={showErrorDialog}
                 onGenerateVoice={generateWorkflowVoice}
                 onGenerateImage={generateWorkflowImage}
                 onGenerateVideo={generateWorkflowVideo}
                 onReload={loadWorkflows}
+                onReloadYouTubeConfigs={loadYouTubeConfigs}
               />
             </section>
           </main>

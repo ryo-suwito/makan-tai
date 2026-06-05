@@ -1046,6 +1046,64 @@ pre {
   word-break: break-word;
 }
 
+.cockpit-split {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.2rem;
+  padding-top: 0.9rem;
+}
+
+.cockpit-stack,
+.cockpit-line-list,
+.workflow-publish-preview {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.cockpit-section-row,
+.cockpit-line-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.8rem;
+  padding-block: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+
+.cockpit-line-item {
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+}
+
+.youtube-modal-grid,
+.workflow-publish-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.youtube-modal-grid label {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.youtube-modal-grid label > span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.youtube-modal-wide {
+  grid-column: 1 / -1;
+}
+
+.workflow-publish-preview {
+  align-content: start;
+  padding-left: 1rem;
+  border-left: 1px solid var(--line);
+}
+
 .openrouter-model-select {
   margin-bottom: 0.7rem;
 }
@@ -1686,8 +1744,24 @@ pre {
 
   .studio-status-grid,
   .reference-selected-list,
+  .cockpit-split,
+  .youtube-modal-grid,
+  .workflow-publish-layout,
   .workflow-asset-grid {
     grid-template-columns: 1fr;
+  }
+
+  .cockpit-section-row,
+  .cockpit-line-item {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .workflow-publish-preview {
+    padding-left: 0;
+    padding-top: 0.9rem;
+    border-left: 0;
+    border-top: 1px solid var(--line);
   }
 
   .studio-nav-list {

@@ -3,6 +3,9 @@ import type {
   Workflow,
   WorkflowSegment,
   WorkflowSegmentStatus,
+  YouTubeConfig,
+  YouTubePrivacyStatus,
+  YouTubeProfile,
 } from '@/components/home/types';
 
 const WORKFLOW_COLUMNS: { label: string; status: WorkflowSegmentStatus }[] = [
@@ -20,15 +23,35 @@ const NEXT_WORKFLOW_STATUS: Partial<Record<WorkflowSegmentStatus, WorkflowSegmen
   image: 'video',
   video: 'done',
 };
+const YOUTUBE_UPLOAD_CATEGORIES = [
+  { id: '1', label: 'Film & Animation' },
+  { id: '2', label: 'Autos & Vehicles' },
+  { id: '10', label: 'Music' },
+  { id: '15', label: 'Pets & Animals' },
+  { id: '17', label: 'Sports' },
+  { id: '19', label: 'Travel & Events' },
+  { id: '20', label: 'Gaming' },
+  { id: '22', label: 'People & Blogs' },
+  { id: '23', label: 'Comedy' },
+  { id: '24', label: 'Entertainment' },
+  { id: '25', label: 'News & Politics' },
+  { id: '26', label: 'Howto & Style' },
+  { id: '27', label: 'Education' },
+  { id: '28', label: 'Science & Technology' },
+  { id: '29', label: 'Nonprofits & Activism' },
+];
 
 interface WorkflowBoardSectionProps {
   isLoading: boolean;
   workflows: Workflow[];
+  youtubeConfigs: YouTubeConfig[];
+  youtubeProfiles: YouTubeProfile[];
   onError: (title: string, err: unknown) => void;
   onGenerateVoice: (segment: WorkflowSegment) => Promise<GeneratedWorkflowVoice>;
   onGenerateImage: (segment: WorkflowSegment) => Promise<string>;
   onGenerateVideo: (segment: WorkflowSegment) => Promise<string>;
   onReload: () => Promise<void>;
+  onReloadYouTubeConfigs: () => Promise<void>;
 }
 
 interface SegmentDraftState {
@@ -50,6 +73,17 @@ interface NukeDialogState {
   workflow: Workflow;
 }
 
+interface PublishConfigDraft {
+  category_id: string;
+  contains_synthetic_media: boolean;
+  default_description: string;
+  default_tags: string;
+  privacy_status: YouTubePrivacyStatus;
+  self_declared_made_for_kids: boolean;
+  thumbnail_url: string;
+  title_template: string;
+}
+
 function getSegmentPreviewText(segment: WorkflowSegment) {
   const text = segment.text || segment.image_prompt || segment.video_prompt || 'No prompt text saved.';
   return text.length > 180 ? `${text.slice(0, 177).trimEnd()}...` : text;
@@ -58,11 +92,14 @@ function getSegmentPreviewText(segment: WorkflowSegment) {
 export function WorkflowBoardSection({
   isLoading,
   workflows,
+  youtubeConfigs,
+  youtubeProfiles,
   onError,
   onGenerateVoice,
   onGenerateImage,
   onGenerateVideo,
   onReload,
+  onReloadYouTubeConfigs,
 }: WorkflowBoardSectionProps) {
   const [busySegmentId, setBusySegmentId] = useState<number | null>(null);
   const [busyWorkflowId, setBusyWorkflowId] = useState<number | null>(null);
@@ -77,6 +114,12 @@ export function WorkflowBoardSection({
     video_prompt: '',
   });
   const [nukeDialog, setNukeDialog] = useState<NukeDialogState | null>(null);
+  const [publishWorkflow, setPublishWorkflow] = useState<Workflow | null>(null);
+  const [publishConfigId, setPublishConfigId] = useState('');
+  const [publishProfileId, setPublishProfileId] = useState('');
+  const [publishDraft, setPublishDraft] = useState<PublishConfigDraft>(getEmptyPublishDraft(''));
+  const [publishBusy, setPublishBusy] = useState(false);
+  const [publishUploading, setPublishUploading] = useState(false);
 
   useEffect(() => {
     if (!nukeDialog) {
@@ -106,6 +149,28 @@ export function WorkflowBoardSection({
 
     return () => window.clearInterval(timer);
   }, [nukeDialog]);
+
+  useEffect(() => {
+    if (!publishWorkflow) {
+      return;
+    }
+
+    const workflowConfig = youtubeConfigs.find((config) => config.id === publishWorkflow.youtube_config_id) ?? null;
+    setPublishConfigId(workflowConfig ? String(workflowConfig.id) : '');
+    setPublishProfileId(workflowConfig?.youtube_profile_id ? String(workflowConfig.youtube_profile_id) : '');
+    setPublishDraft(workflowConfig
+      ? {
+        category_id: workflowConfig.category_id ?? '22',
+        contains_synthetic_media: workflowConfig.contains_synthetic_media,
+        default_description: workflowConfig.default_description,
+        default_tags: workflowConfig.default_tags.join(', '),
+        privacy_status: workflowConfig.privacy_status,
+        self_declared_made_for_kids: workflowConfig.self_declared_made_for_kids,
+        thumbnail_url: workflowConfig.thumbnail_url ?? '',
+        title_template: workflowConfig.title_template,
+      }
+      : getEmptyPublishDraft(publishWorkflow.title));
+  }, [publishWorkflow, youtubeConfigs]);
 
   const openEditor = (segment: WorkflowSegment) => {
     setEditingSegment(segment);
@@ -459,6 +524,104 @@ export function WorkflowBoardSection({
     }
   };
 
+  const persistPublishConfig = async (closeAfterSave: boolean) => {
+    if (!publishWorkflow) {
+      return null;
+    }
+
+    setPublishBusy(true);
+    try {
+      const response = await fetch('/api/youtube/configs', {
+        method: publishConfigId ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: publishConfigId ? Number(publishConfigId) : undefined,
+          workflow_id: publishWorkflow.id,
+          name: publishWorkflow.title,
+          youtube_profile_id: publishProfileId ? Number(publishProfileId) : null,
+          title_template: publishDraft.title_template,
+          default_description: publishDraft.default_description,
+          default_tags: publishDraft.default_tags,
+          category_id: publishDraft.category_id,
+          privacy_status: publishDraft.privacy_status,
+          self_declared_made_for_kids: publishDraft.self_declared_made_for_kids,
+          contains_synthetic_media: publishDraft.contains_synthetic_media,
+          thumbnail_url: publishDraft.thumbnail_url,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(typeof data.error === 'string' ? data.error : 'Failed to save publish setup.');
+      }
+
+      const configId = Number(data.data?.id);
+      if (Number.isFinite(configId) && configId > 0) {
+        setPublishConfigId(String(configId));
+      }
+      if (closeAfterSave) {
+        setPublishWorkflow(null);
+      }
+      await onReloadYouTubeConfigs();
+      await onReload();
+      return Number.isFinite(configId) && configId > 0 ? configId : null;
+    } catch (err) {
+      onError('YouTube publish setup failed', err);
+      return null;
+    } finally {
+      setPublishBusy(false);
+    }
+  };
+
+  const savePublishSetup = async () => {
+    await persistPublishConfig(true);
+  };
+
+  const uploadPublishWorkflow = async () => {
+    if (!publishWorkflow) {
+      return;
+    }
+
+    setPublishUploading(true);
+    try {
+      const configId = await persistPublishConfig(false);
+      if (!configId) {
+        return;
+      }
+
+      const response = await fetch('/api/workflows/youtube/publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workflowId: publishWorkflow.id }),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          typeof data.details === 'string'
+            ? data.details
+            : typeof data.error === 'string'
+              ? data.error
+              : 'Failed to upload workflow to YouTube.',
+        );
+      }
+
+      await onReload();
+      setPublishWorkflow(null);
+    } catch (err) {
+      onError('YouTube upload failed', err);
+    } finally {
+      setPublishUploading(false);
+    }
+  };
+
+  const selectedPublishProfile = youtubeProfiles.find((profile) => String(profile.id) === publishProfileId) ?? null;
+  const selectedPublishCategory = YOUTUBE_UPLOAD_CATEGORIES.find((category) => category.id === publishDraft.category_id)
+    ?? YOUTUBE_UPLOAD_CATEGORIES.find((category) => category.id === '22')!;
+  const resolvedPublishTitle = publishWorkflow
+    ? publishDraft.title_template.replaceAll('{workflowTitle}', publishWorkflow.title)
+    : '';
+
   return (
     <div className="workflow-section mt-6">
       <div className="gemini-section-header">
@@ -484,6 +647,11 @@ export function WorkflowBoardSection({
                     <a className="workflow-link" href={buildDisplayUrl(workflow.finalized_url)} download>
                       Download
                     </a>
+                    {workflow.youtube_publish_url && (
+                      <a className="workflow-link" href={workflow.youtube_publish_url} target="_blank" rel="noreferrer">
+                        Open YouTube
+                      </a>
+                    )}
                   </div>
                 )}
               </div>
@@ -496,6 +664,16 @@ export function WorkflowBoardSection({
                 >
                   {busyWorkflowId === workflow.id ? 'Finalizing...' : 'Finalize'}
                 </button>
+                {workflow.finalized_url && (
+                  <button
+                    type="button"
+                    className="gemini-save-button"
+                    onClick={() => setPublishWorkflow(workflow)}
+                    disabled={isBoardBusy}
+                  >
+                    Publish
+                  </button>
+                )}
                 <button
                   type="button"
                   className="workflow-nuke-button"
@@ -811,6 +989,144 @@ export function WorkflowBoardSection({
           </div>
         </div>
       )}
+
+      {publishWorkflow && (
+        <div className="system-prompt-detail-overlay" role="presentation" onClick={() => setPublishWorkflow(null)}>
+          <div
+            className="system-prompt-detail-card workflow-detail-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="workflow-publish-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="system-prompt-detail-header">
+              <div>
+                <p className="voice-section-kicker">Publish</p>
+                <h3 id="workflow-publish-title">YouTube setup</h3>
+              </div>
+              <button type="button" className="system-prompt-detail-close" onClick={() => setPublishWorkflow(null)} aria-label="Close publish setup">
+                x
+              </button>
+            </div>
+
+            <div className="workflow-publish-layout">
+              <div className="youtube-modal-grid">
+                <label>
+                  <span>YouTube profile</span>
+                  <select value={publishProfileId} onChange={(event) => setPublishProfileId(event.target.value)}>
+                    <option value="">No profile selected</option>
+                    {youtubeProfiles.map((profile) => (
+                      <option key={profile.id} value={profile.id}>{profile.name}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  <span>Title</span>
+                  <input value={publishDraft.title_template} onChange={(event) => setPublishDraft((current) => ({ ...current, title_template: event.target.value }))} placeholder={publishWorkflow.title} />
+                </label>
+
+                <label className="youtube-modal-wide">
+                  <span>Description</span>
+                  <textarea value={publishDraft.default_description} onChange={(event) => setPublishDraft((current) => ({ ...current, default_description: event.target.value }))} rows={4} />
+                </label>
+
+                <label>
+                  <span>Tags</span>
+                  <input value={publishDraft.default_tags} onChange={(event) => setPublishDraft((current) => ({ ...current, default_tags: event.target.value }))} placeholder="shorts, aquarium, macro" />
+                </label>
+
+                <label>
+                  <span>Privacy</span>
+                  <select value={publishDraft.privacy_status} onChange={(event) => setPublishDraft((current) => ({ ...current, privacy_status: event.target.value as YouTubePrivacyStatus }))}>
+                    <option value="private">Private</option>
+                    <option value="unlisted">Unlisted</option>
+                    <option value="public">Public</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>Category</span>
+                  <select value={publishDraft.category_id || '22'} onChange={(event) => setPublishDraft((current) => ({ ...current, category_id: event.target.value }))}>
+                    {YOUTUBE_UPLOAD_CATEGORIES.map((category) => (
+                      <option key={category.id} value={category.id}>{category.label}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  <span>Thumbnail URL</span>
+                  <input value={publishDraft.thumbnail_url} onChange={(event) => setPublishDraft((current) => ({ ...current, thumbnail_url: event.target.value }))} placeholder="Optional image URL" />
+                </label>
+
+                <label className="video-checkbox-row">
+                  <input type="checkbox" checked={publishDraft.self_declared_made_for_kids} onChange={(event) => setPublishDraft((current) => ({ ...current, self_declared_made_for_kids: event.target.checked }))} />
+                  <span>Made for kids</span>
+                </label>
+
+                <label className="video-checkbox-row">
+                  <input type="checkbox" checked={publishDraft.contains_synthetic_media} onChange={(event) => setPublishDraft((current) => ({ ...current, contains_synthetic_media: event.target.checked }))} />
+                  <span>Synthetic media disclosure</span>
+                </label>
+              </div>
+
+              <div className="workflow-publish-preview">
+                <div>
+                  <span className="cockpit-meta-label">Workflow</span>
+                  <p className="cockpit-meta-value">{publishWorkflow.title}</p>
+                </div>
+                <div>
+                  <span className="cockpit-meta-label">Final video</span>
+                  <a className="workflow-link" href={buildDisplayUrl(publishWorkflow.finalized_url ?? '')} target="_blank" rel="noreferrer">
+                    Open finalized MP4
+                  </a>
+                </div>
+                <div>
+                  <span className="cockpit-meta-label">Resolved title</span>
+                  <p className="cockpit-meta-value">{resolvedPublishTitle || publishWorkflow.title}</p>
+                </div>
+                <div>
+                  <span className="cockpit-meta-label">Target profile</span>
+                  <p className="cockpit-meta-value">
+                    {selectedPublishProfile
+                      ? `${selectedPublishProfile.name}${selectedPublishProfile.has_refresh_token ? ' / token saved' : ' / token missing'}`
+                      : 'Select profile before real upload.'}
+                  </p>
+                </div>
+                <div>
+                  <span className="cockpit-meta-label">Metadata</span>
+                  <p className="cockpit-meta-value">
+                    {publishDraft.privacy_status} / {selectedPublishCategory.label} ({selectedPublishCategory.id}) / {publishDraft.default_tags.split(',').filter((tag) => tag.trim()).length} tags
+                  </p>
+                </div>
+                {publishDraft.thumbnail_url && (
+                  <div>
+                    <span className="cockpit-meta-label">Thumbnail</span>
+                    <p className="cockpit-meta-value">{publishDraft.thumbnail_url}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="system-prompt-detail-actions">
+              <button type="button" className="gemini-secondary-button" onClick={() => setPublishWorkflow(null)}>
+                Cancel
+              </button>
+              <button type="button" className="gemini-save-button" disabled={publishBusy || !publishDraft.title_template.trim()} onClick={() => { void savePublishSetup(); }}>
+                {publishBusy ? 'Saving...' : publishConfigId ? 'Update publish config' : 'Save publish config'}
+              </button>
+              <button
+                type="button"
+                className="gemini-save-button"
+                disabled={publishBusy || publishUploading || !publishDraft.title_template.trim() || !selectedPublishProfile?.has_refresh_token}
+                onClick={() => { void uploadPublishWorkflow(); }}
+              >
+                {publishUploading ? 'Uploading...' : 'Upload to YouTube'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -830,4 +1146,17 @@ function buildDisplayUrl(value: string) {
   }
 
   return value;
+}
+
+function getEmptyPublishDraft(workflowTitle: string): PublishConfigDraft {
+  return {
+    category_id: '22',
+    contains_synthetic_media: true,
+    default_description: '',
+    default_tags: '',
+    privacy_status: 'private',
+    self_declared_made_for_kids: false,
+    thumbnail_url: '',
+    title_template: workflowTitle || '{workflowTitle}',
+  };
 }

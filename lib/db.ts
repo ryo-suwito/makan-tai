@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypto';
 import { existsSync, mkdirSync } from 'fs';
 import { normalizeStyleDnaProfile, type StyleDnaProfile } from './style-dna';
 
@@ -30,6 +31,23 @@ interface YouTubeConfigRow {
   thumbnail_url: string | null;
   title_template: string;
   updated_at: string;
+  youtube_profile_id: number | null;
+}
+
+interface YouTubeProfileRow {
+  access_token_encrypted: string | null;
+  channel_id: string | null;
+  channel_title: string | null;
+  created_at: string;
+  google_account_email: string | null;
+  google_account_id: string | null;
+  id: number;
+  name: string;
+  refresh_token_encrypted: string | null;
+  scope: string | null;
+  token_expires_at: string | null;
+  token_type: string | null;
+  updated_at: string;
 }
 
 type YouTubePrivacyStatus = 'private' | 'public' | 'unlisted';
@@ -42,6 +60,9 @@ interface WorkflowRow {
   title: string;
   updated_at: string;
   youtube_config_id: number | null;
+  youtube_publish_url: string | null;
+  youtube_published_at: string | null;
+  youtube_video_id: string | null;
 }
 
 interface WorkflowSegmentRow {
@@ -108,6 +129,9 @@ export interface StoredWorkflow {
   title: string;
   updated_at: string;
   youtube_config_id: number | null;
+  youtube_publish_url: string | null;
+  youtube_published_at: string | null;
+  youtube_video_id: string | null;
 }
 
 export interface StoredYouTubeConfig {
@@ -123,6 +147,7 @@ export interface StoredYouTubeConfig {
   thumbnail_url: string | null;
   title_template: string;
   updated_at: string;
+  youtube_profile_id: number | null;
 }
 
 export interface YouTubeConfigInput {
@@ -135,6 +160,47 @@ export interface YouTubeConfigInput {
   self_declared_made_for_kids?: boolean | null;
   thumbnail_url?: string | null;
   title_template?: string | null;
+  youtube_profile_id?: number | null;
+}
+
+export interface StoredYouTubeProfile {
+  channel_id: string | null;
+  channel_title: string | null;
+  created_at: string;
+  google_account_email: string | null;
+  google_account_id: string | null;
+  has_access_token: boolean;
+  has_refresh_token: boolean;
+  id: number;
+  name: string;
+  scope: string | null;
+  token_expires_at: string | null;
+  token_type: string | null;
+  updated_at: string;
+}
+
+export interface YouTubeProfileInput {
+  channel_id?: string | null;
+  channel_title?: string | null;
+  google_account_email?: string | null;
+  google_account_id?: string | null;
+  name: string;
+}
+
+export interface YouTubeProfileTokenInput {
+  access_token?: string | null;
+  refresh_token?: string | null;
+  scope?: string | null;
+  token_expires_at?: string | null;
+  token_type?: string | null;
+}
+
+export interface StoredYouTubeProfileTokens {
+  access_token: string | null;
+  refresh_token: string | null;
+  scope: string | null;
+  token_expires_at: string | null;
+  token_type: string | null;
 }
 
 export interface WorkflowSegmentUpdate {
@@ -159,6 +225,65 @@ export interface StoredThreadsAuth {
 }
 
 let db: Database.Database | null = null;
+const YOUTUBE_TOKEN_ENCRYPTION_ALGORITHM = 'aes-256-gcm';
+
+function getYouTubeTokenEncryptionKey() {
+  const masterKey = process.env.YOUTUBE_PROFILE_MASTER_KEY?.trim();
+  if (!masterKey) {
+    throw new Error('YOUTUBE_PROFILE_MASTER_KEY is required to store YouTube profile tokens.');
+  }
+
+  return createHash('sha256').update(masterKey).digest();
+}
+
+function encryptYouTubeToken(value: string | null | undefined) {
+  const normalized = value?.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const iv = randomBytes(12);
+  const cipher = createCipheriv(YOUTUBE_TOKEN_ENCRYPTION_ALGORITHM, getYouTubeTokenEncryptionKey(), iv);
+  const ciphertext = Buffer.concat([cipher.update(normalized, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+
+  return JSON.stringify({
+    alg: YOUTUBE_TOKEN_ENCRYPTION_ALGORITHM,
+    ciphertext: ciphertext.toString('base64'),
+    iv: iv.toString('base64'),
+    tag: tag.toString('base64'),
+    v: 1,
+  });
+}
+
+function decryptYouTubeToken(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const payload = JSON.parse(value) as {
+    alg?: string;
+    ciphertext?: string;
+    iv?: string;
+    tag?: string;
+    v?: number;
+  };
+
+  if (payload.v !== 1 || payload.alg !== YOUTUBE_TOKEN_ENCRYPTION_ALGORITHM || !payload.iv || !payload.tag || !payload.ciphertext) {
+    throw new Error('Unsupported YouTube token encryption payload.');
+  }
+
+  const decipher = createDecipheriv(
+    YOUTUBE_TOKEN_ENCRYPTION_ALGORITHM,
+    getYouTubeTokenEncryptionKey(),
+    Buffer.from(payload.iv, 'base64'),
+  );
+  decipher.setAuthTag(Buffer.from(payload.tag, 'base64'));
+  return Buffer.concat([
+    decipher.update(Buffer.from(payload.ciphertext, 'base64')),
+    decipher.final(),
+  ]).toString('utf8');
+}
 
 function getDb(): Database.Database {
   if (db) return db;
@@ -193,8 +318,38 @@ function getDb(): Database.Database {
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
+  db.exec(`CREATE TABLE IF NOT EXISTS youtube_profiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    channel_id TEXT,
+    channel_title TEXT,
+    google_account_id TEXT,
+    google_account_email TEXT,
+    access_token_encrypted TEXT,
+    refresh_token_encrypted TEXT,
+    token_type TEXT,
+    scope TEXT,
+    token_expires_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+  const youtubeProfileColumns = db.prepare('PRAGMA table_info(youtube_profiles)').all() as Array<{ name: string }>;
+  [
+    ['google_account_id', 'TEXT'],
+    ['google_account_email', 'TEXT'],
+    ['access_token_encrypted', 'TEXT'],
+    ['refresh_token_encrypted', 'TEXT'],
+    ['token_type', 'TEXT'],
+    ['scope', 'TEXT'],
+    ['token_expires_at', 'DATETIME'],
+  ].forEach(([name, type]) => {
+    if (!youtubeProfileColumns.some((column) => column.name === name)) {
+      db.exec(`ALTER TABLE youtube_profiles ADD COLUMN ${name} ${type}`);
+    }
+  });
   db.exec(`CREATE TABLE IF NOT EXISTS youtube_configs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    youtube_profile_id INTEGER,
     name TEXT NOT NULL,
     title_template TEXT NOT NULL DEFAULT '{workflowTitle}',
     default_description TEXT NOT NULL DEFAULT '',
@@ -205,8 +360,13 @@ function getDb(): Database.Database {
     contains_synthetic_media INTEGER NOT NULL DEFAULT 1,
     thumbnail_url TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (youtube_profile_id) REFERENCES youtube_profiles(id) ON DELETE SET NULL
   )`);
+  const youtubeConfigColumns = db.prepare('PRAGMA table_info(youtube_configs)').all() as Array<{ name: string }>;
+  if (!youtubeConfigColumns.some((column) => column.name === 'youtube_profile_id')) {
+    db.exec('ALTER TABLE youtube_configs ADD COLUMN youtube_profile_id INTEGER REFERENCES youtube_profiles(id) ON DELETE SET NULL');
+  }
   db.exec(`CREATE TABLE IF NOT EXISTS workflows (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
@@ -222,6 +382,15 @@ function getDb(): Database.Database {
   }
   if (!workflowColumns.some((column) => column.name === 'youtube_config_id')) {
     db.exec('ALTER TABLE workflows ADD COLUMN youtube_config_id INTEGER REFERENCES youtube_configs(id) ON DELETE SET NULL');
+  }
+  if (!workflowColumns.some((column) => column.name === 'youtube_video_id')) {
+    db.exec('ALTER TABLE workflows ADD COLUMN youtube_video_id TEXT');
+  }
+  if (!workflowColumns.some((column) => column.name === 'youtube_publish_url')) {
+    db.exec('ALTER TABLE workflows ADD COLUMN youtube_publish_url TEXT');
+  }
+  if (!workflowColumns.some((column) => column.name === 'youtube_published_at')) {
+    db.exec('ALTER TABLE workflows ADD COLUMN youtube_published_at DATETIME');
   }
   db.exec(`CREATE TABLE IF NOT EXISTS workflow_segments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -253,6 +422,7 @@ function getDb(): Database.Database {
   }
   db.exec('CREATE INDEX IF NOT EXISTS idx_workflow_segments_workflow_order ON workflow_segments (workflow_id, segment_order, id)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_workflows_youtube_config ON workflows (youtube_config_id)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_youtube_configs_profile ON youtube_configs (youtube_profile_id)');
   return db;
 }
 
@@ -318,6 +488,7 @@ function mapYouTubeConfigRow(row: YouTubeConfigRow): StoredYouTubeConfig {
 
   return {
     id: row.id,
+    youtube_profile_id: row.youtube_profile_id,
     name: row.name,
     title_template: row.title_template,
     default_description: row.default_description,
@@ -327,6 +498,24 @@ function mapYouTubeConfigRow(row: YouTubeConfigRow): StoredYouTubeConfig {
     self_declared_made_for_kids: Boolean(row.self_declared_made_for_kids),
     contains_synthetic_media: Boolean(row.contains_synthetic_media),
     thumbnail_url: row.thumbnail_url,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
+function mapYouTubeProfileRow(row: YouTubeProfileRow): StoredYouTubeProfile {
+  return {
+    id: row.id,
+    name: row.name,
+    channel_id: row.channel_id,
+    channel_title: row.channel_title,
+    google_account_id: row.google_account_id,
+    google_account_email: row.google_account_email,
+    has_access_token: Boolean(row.access_token_encrypted),
+    has_refresh_token: Boolean(row.refresh_token_encrypted),
+    scope: row.scope,
+    token_expires_at: row.token_expires_at,
+    token_type: row.token_type,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -346,6 +535,9 @@ function mapWorkflowRows(workflowRows: WorkflowRow[], segmentRows: WorkflowSegme
     title: row.title,
     finalized_url: row.finalized_url,
     youtube_config_id: row.youtube_config_id,
+    youtube_video_id: row.youtube_video_id,
+    youtube_publish_url: row.youtube_publish_url,
+    youtube_published_at: row.youtube_published_at,
     created_at: row.created_at,
     updated_at: row.updated_at,
     segments: segmentsByWorkflow.get(row.id) ?? [],
@@ -411,15 +603,182 @@ export function deleteStyleDnaProfile(id: number) {
   database.prepare('DELETE FROM style_dna_profiles WHERE id = ?').run(id);
 }
 
+export function createYouTubeProfile(input: YouTubeProfileInput): StoredYouTubeProfile | null {
+  const database = getDb();
+  const name = input.name.trim();
+  if (!name) {
+    throw new Error('YouTube profile name is required.');
+  }
+
+  const result = database.prepare(`
+    INSERT INTO youtube_profiles (name, channel_id, channel_title, google_account_id, google_account_email)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(
+    name,
+    input.channel_id?.trim() || null,
+    input.channel_title?.trim() || null,
+    input.google_account_id?.trim() || null,
+    input.google_account_email?.trim() || null,
+  );
+
+  return getYouTubeProfileById(Number(result.lastInsertRowid));
+}
+
+export function getYouTubeProfiles(): StoredYouTubeProfile[] {
+  const database = getDb();
+  const rows = database.prepare(`
+    SELECT
+      id,
+      name,
+      channel_id,
+      channel_title,
+      google_account_id,
+      google_account_email,
+      access_token_encrypted,
+      refresh_token_encrypted,
+      token_type,
+      scope,
+      token_expires_at,
+      created_at,
+      updated_at
+    FROM youtube_profiles
+    ORDER BY updated_at DESC, id DESC
+  `).all() as YouTubeProfileRow[];
+  return rows.map(mapYouTubeProfileRow);
+}
+
+export function getYouTubeProfileById(id: number): StoredYouTubeProfile | null {
+  const database = getDb();
+  const row = database.prepare(`
+    SELECT
+      id,
+      name,
+      channel_id,
+      channel_title,
+      google_account_id,
+      google_account_email,
+      access_token_encrypted,
+      refresh_token_encrypted,
+      token_type,
+      scope,
+      token_expires_at,
+      created_at,
+      updated_at
+    FROM youtube_profiles
+    WHERE id = ?
+  `).get(id) as YouTubeProfileRow | undefined;
+  return row ? mapYouTubeProfileRow(row) : null;
+}
+
+export function updateYouTubeProfile(id: number, input: YouTubeProfileInput): StoredYouTubeProfile | null {
+  const database = getDb();
+  const profile = getYouTubeProfileById(id);
+  if (!profile) {
+    return null;
+  }
+
+  const name = input.name.trim();
+  if (!name) {
+    throw new Error('YouTube profile name is required.');
+  }
+
+  database.prepare(`
+    UPDATE youtube_profiles
+    SET
+      name = ?,
+      channel_id = ?,
+      channel_title = ?,
+      google_account_id = ?,
+      google_account_email = ?,
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(
+    name,
+    input.channel_id?.trim() || null,
+    input.channel_title?.trim() || null,
+    input.google_account_id?.trim() || null,
+    input.google_account_email?.trim() || null,
+    id,
+  );
+
+  return getYouTubeProfileById(id);
+}
+
+export function deleteYouTubeProfile(id: number) {
+  const database = getDb();
+  database.prepare('UPDATE youtube_configs SET youtube_profile_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE youtube_profile_id = ?').run(id);
+  database.prepare('DELETE FROM youtube_profiles WHERE id = ?').run(id);
+}
+
+export function saveYouTubeProfileTokens(id: number, input: YouTubeProfileTokenInput): StoredYouTubeProfile | null {
+  const database = getDb();
+  const profile = getYouTubeProfileById(id);
+  if (!profile) {
+    return null;
+  }
+
+  database.prepare(`
+    UPDATE youtube_profiles
+    SET
+      access_token_encrypted = COALESCE(?, access_token_encrypted),
+      refresh_token_encrypted = COALESCE(?, refresh_token_encrypted),
+      token_type = COALESCE(?, token_type),
+      scope = COALESCE(?, scope),
+      token_expires_at = COALESCE(?, token_expires_at),
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(
+    input.access_token === undefined ? null : encryptYouTubeToken(input.access_token),
+    input.refresh_token === undefined ? null : encryptYouTubeToken(input.refresh_token),
+    input.token_type?.trim() || null,
+    input.scope?.trim() || null,
+    input.token_expires_at?.trim() || null,
+    id,
+  );
+
+  return getYouTubeProfileById(id);
+}
+
+export function getYouTubeProfileTokens(id: number): StoredYouTubeProfileTokens | null {
+  const database = getDb();
+  const row = database.prepare(`
+    SELECT
+      access_token_encrypted,
+      refresh_token_encrypted,
+      token_type,
+      scope,
+      token_expires_at
+    FROM youtube_profiles
+    WHERE id = ?
+  `).get(id) as Pick<YouTubeProfileRow, 'access_token_encrypted' | 'refresh_token_encrypted' | 'token_type' | 'scope' | 'token_expires_at'> | undefined;
+
+  if (!row) {
+    return null;
+  }
+
+  return {
+    access_token: decryptYouTubeToken(row.access_token_encrypted),
+    refresh_token: decryptYouTubeToken(row.refresh_token_encrypted),
+    scope: row.scope,
+    token_expires_at: row.token_expires_at,
+    token_type: row.token_type,
+  };
+}
+
 export function createYouTubeConfig(input: YouTubeConfigInput): StoredYouTubeConfig | null {
   const database = getDb();
   const name = input.name.trim();
   if (!name) {
     throw new Error('YouTube config name is required.');
   }
+  const youtubeProfileId = input.youtube_profile_id ?? null;
+  if (youtubeProfileId !== null && !getYouTubeProfileById(youtubeProfileId)) {
+    throw new Error('YouTube profile does not exist.');
+  }
 
   const result = database.prepare(`
     INSERT INTO youtube_configs (
+      youtube_profile_id,
       name,
       title_template,
       default_description,
@@ -430,8 +789,9 @@ export function createYouTubeConfig(input: YouTubeConfigInput): StoredYouTubeCon
       contains_synthetic_media,
       thumbnail_url
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
+    youtubeProfileId,
     name,
     input.title_template?.trim() || '{workflowTitle}',
     input.default_description?.trim() || '',
@@ -451,6 +811,7 @@ export function getYouTubeConfigs(): StoredYouTubeConfig[] {
   const rows = database.prepare(`
     SELECT
       id,
+      youtube_profile_id,
       name,
       title_template,
       default_description,
@@ -473,6 +834,7 @@ export function getYouTubeConfigById(id: number): StoredYouTubeConfig | null {
   const row = database.prepare(`
     SELECT
       id,
+      youtube_profile_id,
       name,
       title_template,
       default_description,
@@ -488,6 +850,60 @@ export function getYouTubeConfigById(id: number): StoredYouTubeConfig | null {
     WHERE id = ?
   `).get(id) as YouTubeConfigRow | undefined;
   return row ? mapYouTubeConfigRow(row) : null;
+}
+
+export function updateYouTubeConfig(id: number, input: YouTubeConfigInput): StoredYouTubeConfig | null {
+  const database = getDb();
+  const config = getYouTubeConfigById(id);
+  if (!config) {
+    return null;
+  }
+
+  const name = input.name.trim();
+  if (!name) {
+    throw new Error('YouTube config name is required.');
+  }
+  const youtubeProfileId = input.youtube_profile_id ?? null;
+  if (youtubeProfileId !== null && !getYouTubeProfileById(youtubeProfileId)) {
+    throw new Error('YouTube profile does not exist.');
+  }
+
+  database.prepare(`
+    UPDATE youtube_configs
+    SET
+      youtube_profile_id = ?,
+      name = ?,
+      title_template = ?,
+      default_description = ?,
+      default_tags_json = ?,
+      category_id = ?,
+      privacy_status = ?,
+      self_declared_made_for_kids = ?,
+      contains_synthetic_media = ?,
+      thumbnail_url = ?,
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(
+    youtubeProfileId,
+    name,
+    input.title_template?.trim() || '{workflowTitle}',
+    input.default_description?.trim() || '',
+    JSON.stringify(normalizeYouTubeTags(input.default_tags ?? [])),
+    input.category_id?.trim() || '22',
+    normalizeYouTubePrivacyStatus(input.privacy_status),
+    Number(Boolean(input.self_declared_made_for_kids)),
+    input.contains_synthetic_media === undefined || input.contains_synthetic_media === null ? 1 : Number(Boolean(input.contains_synthetic_media)),
+    input.thumbnail_url?.trim() || null,
+    id,
+  );
+
+  return getYouTubeConfigById(id);
+}
+
+export function deleteYouTubeConfig(id: number) {
+  const database = getDb();
+  database.prepare('UPDATE workflows SET youtube_config_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE youtube_config_id = ?').run(id);
+  database.prepare('DELETE FROM youtube_configs WHERE id = ?').run(id);
 }
 
 export function updateWorkflowYouTubeConfig(workflowId: number, youtubeConfigId: number | null): StoredWorkflow | null {
@@ -572,7 +988,20 @@ export function createWorkflow(title: string, segments: WorkflowSegmentInput[]):
 
 export function getWorkflows(): StoredWorkflow[] {
   const database = getDb();
-  const workflowRows = database.prepare('SELECT id, title, finalized_url, youtube_config_id, created_at, updated_at FROM workflows ORDER BY updated_at DESC, id DESC').all() as WorkflowRow[];
+  const workflowRows = database.prepare(`
+    SELECT
+      id,
+      title,
+      finalized_url,
+      youtube_config_id,
+      youtube_video_id,
+      youtube_publish_url,
+      youtube_published_at,
+      created_at,
+      updated_at
+    FROM workflows
+    ORDER BY updated_at DESC, id DESC
+  `).all() as WorkflowRow[];
   const segmentRows = database.prepare(`
     SELECT
       id,
@@ -599,7 +1028,20 @@ export function getWorkflows(): StoredWorkflow[] {
 
 export function getWorkflowById(id: number): StoredWorkflow | null {
   const database = getDb();
-  const workflowRow = database.prepare('SELECT id, title, finalized_url, youtube_config_id, created_at, updated_at FROM workflows WHERE id = ?').get(id) as WorkflowRow | undefined;
+  const workflowRow = database.prepare(`
+    SELECT
+      id,
+      title,
+      finalized_url,
+      youtube_config_id,
+      youtube_video_id,
+      youtube_publish_url,
+      youtube_published_at,
+      created_at,
+      updated_at
+    FROM workflows
+    WHERE id = ?
+  `).get(id) as WorkflowRow | undefined;
   if (!workflowRow) {
     return null;
   }
@@ -651,11 +1093,44 @@ export function updateWorkflowFinalizedUrl(id: number, finalizedUrl: string | nu
     return null;
   }
 
+  if (current.finalized_url !== finalizedUrl) {
+    database.prepare(`
+      UPDATE workflows
+      SET
+        finalized_url = ?,
+        youtube_video_id = NULL,
+        youtube_publish_url = NULL,
+        youtube_published_at = NULL,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(finalizedUrl, id);
+  } else {
+    database.prepare(`
+      UPDATE workflows
+      SET finalized_url = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(finalizedUrl, id);
+  }
+
+  return getWorkflowById(id);
+}
+
+export function updateWorkflowYouTubePublishResult(id: number, videoId: string, publishUrl: string): StoredWorkflow | null {
+  const database = getDb();
+  const current = getWorkflowById(id);
+  if (!current) {
+    return null;
+  }
+
   database.prepare(`
     UPDATE workflows
-    SET finalized_url = ?, updated_at = CURRENT_TIMESTAMP
+    SET
+      youtube_video_id = ?,
+      youtube_publish_url = ?,
+      youtube_published_at = CURRENT_TIMESTAMP,
+      updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
-  `).run(finalizedUrl, id);
+  `).run(videoId, publishUrl, id);
 
   return getWorkflowById(id);
 }
